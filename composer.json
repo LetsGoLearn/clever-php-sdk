@@ -1,5 +1,5 @@
 {
-    "name": "geekspeek/clever-php-sdk",
+    "name": "letsgolearn/clever-php-sdk",
     "description": "Clever API/SSO PHP library",
     "authors": [{
         "name": "Joshua Lawrence",
