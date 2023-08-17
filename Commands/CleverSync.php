@@ -460,7 +460,10 @@ class CleverSync extends Command
                         $roster = Roster::where('client_id', $this->client->id)->with(['metadata' => function($q) use ($section) {
                             $q->ofCleverId($section->data['id']);
                         }])->first();
+                        $replace = true;
+
                     } else {
+                        dd('here2');
                         $roster = new Roster();
                     }
 
@@ -524,9 +527,6 @@ class CleverSync extends Command
                     }
                     $roster->users()->detach();
                     $roster->users()->attach($students);
-
-                } else {
-                    /* @noinspection PhpUndefinedFieldInspection */
 
                 }
                 $bar->advance();
