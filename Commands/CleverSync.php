@@ -407,11 +407,6 @@ class CleverSync extends Command
                     $cleverUserArray['data'] = $cleverUser->data;
                     $cleverUserArray['data']['foreign_id'] = $data['foreign_id'];
                     
-                    /**
-                     * Shit starts here
-                     * Check if student exists
-                     */
-                    // ... I forgot this...
 
                     $user = $this->processCleverUserData($cleverUserArray);
 
@@ -518,6 +513,7 @@ class CleverSync extends Command
                     foreach ($data['teachers'] as $cleverTeacherId) {
                         array_push($teachers, $this->teachers[$cleverTeacherId]);
                     }
+                    $roster->access()->detach();
                     $roster->access()->attach($teachers);
                     // Attach Students to Roster
                     $students = [];
@@ -526,6 +522,7 @@ class CleverSync extends Command
                             array_push($students, $this->students[$cleverStudentId]);
                         }
                     }
+                    $roster->users()->detach();
                     $roster->users()->attach($students);
 
                 } else {
