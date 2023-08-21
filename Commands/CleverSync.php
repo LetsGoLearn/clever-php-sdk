@@ -463,7 +463,7 @@ class CleverSync extends Command
                         $replace = true;
 
                     } else {
-                        dd('here2');
+                        dd($section);
                         $roster = new Roster();
                     }
 
