@@ -91,7 +91,18 @@ class SiteSync extends Command
 
             $this->updateRosterData($cleverRosterLink);
         } catch (Exception $e) {
-            $this->error('Caught exception: '.$e->getMessage().' File: '.$e->getFile().' Line: '.$e->getLine());
+            $error = 'Caught exception: '.$e->getMessage().' File: '.$e->getFile().' Line: '.$e->getLine();
+
+            activity()
+                ->performedOn($this->client)
+                ->withProperties([
+                    'cleverId' => $this->cleverId,
+                    'clientId' => $this->clientId,
+                    'type'     => $this->type,
+                    'error'    => $error
+                ])
+                ->log('clever-sync-site');
+            $this->error($error);
             die();
         }
         $this->info('Roster information has been updated.');

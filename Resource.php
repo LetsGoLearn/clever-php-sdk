@@ -43,7 +43,7 @@ class Resource
             $url = "{$url}/{$endpoint}";
             if ($options) {
                 $urlQuery = http_build_query($options);
-                $url      .= '?'.$urlQuery;
+                $url .= '?'.$urlQuery;
             }
         }
         return $url;
@@ -53,7 +53,13 @@ class Resource
     function retrieve()
     {
         $data = call_user_func($this->pinger, $this->makeUrl(""), []);
-
+        if (is_null($data)) {
+            $data = [ // LGL/Clever/Resource.php:56
+                      "code"  => 30,
+                      "error" => "Resource not found",
+                      "data"  => null
+            ];
+        }
         return $this->unmarshal($data);
     }
 
@@ -102,21 +108,21 @@ class Resource
     protected function getObjects($type, array $options = [])
     {
         if ($typedObject = $this->getTypedObject($type)) {
-            $url  = ($type == 'events') ? 'events' : $type;
+            $url = ($type == 'events') ? 'events' : $type;
             $data = call_user_func($this->pinger, $url, $options);
             if (!empty($data['data'][0]['data'])) {
                 foreach ($data["data"] as $object) {
-                    $Obj    = new $typedObject($object["data"]["id"], $this->pinger);
+                    $Obj = new $typedObject($object["data"]["id"], $this->pinger);
                     $Objs[] = $Obj->unmarshal($object["data"]);
                 }
             } elseif (!empty($data['data'])) {
                 foreach ($data['data'] as $array) {
-                    $Obj    = new $typedObject($array["id"], $this->pinger);
+                    $Obj = new $typedObject($array["id"], $this->pinger);
                     $Objs[] = $Obj->unmarshal($array);
                 }
             } else {
                 // Log as an empty record
-                $Obj    = new $typedObject(null, $this->pinger);
+                $Obj = new $typedObject(null, $this->pinger);
                 $Objs[] = $Obj;
             }
 

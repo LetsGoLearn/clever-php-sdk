@@ -9,20 +9,20 @@ namespace LGL\Clever\Commands;
  * Time: 2:29 PM
  */
 
-use Illuminate\Console\Command;
-use LGL\Auth\Users\EloquentUser;
 use LGL\Clever\Api;
 use LGL\Clever\Exceptions\Exception;
+use Illuminate\Console\Command;
 use LGL\Core\Accounts\Models\Client as Clients;
 use LGL\Core\Clever\Traits\CleverBase;
 use LGL\Core\Imports\Traits\ProcessRoster;
 use LGL\Core\Imports\Traits\ProcessUser;
 use LGL\Core\Rosters\Models\Roster;
+use LGL\Auth\Users\EloquentUser;
 
 /**
  * Class CleverSync.
  */
-class SectionSync extends Command
+class CleverSyncBySections extends Command
 {
     use CleverBase;
     use ProcessUser;
@@ -47,9 +47,8 @@ class SectionSync extends Command
      *
      * @var string
      */
-    protected $signature = 'clever:sectionSync 
+    protected $signature = 'clever:sync:by:section 
     {clientId : The client ID to begin syncing} 
-    {cleverId : clever ID for section/roster to sync}
     {--debug : Show more information.}';
 
     /**
@@ -73,56 +72,49 @@ class SectionSync extends Command
      */
     public function handle()
     {
-        $cleverSections = null;
+        $cleverSections   = null;
         $this->adminTypes = config('clever')['adminTypes'];
         try {
-            $this->cleverId = $this->argument('cleverId');
             $this->clientId = $this->argument('clientId');
-            $this->client = Clients::where('id', $this->clientId)->with('metadata')->first();
-            $this->type = 'section';
-            $this->clever = new Api($this->client->metadata->data['api_secret']);
+            $this->client   = Clients::where('id', $this->clientId)->with('metadata')->first();
+            $this->type     = 'section';
+            $this->clever   = new Api($this->client->metadata->data['api_secret']);
+
 
             $rosterLinkNumber = 0;
+            $rosters = $this->client->rosters()->get();
 
-            $this->metadata = $this->getCleverMetadata($this->cleverId);
-            /* @noinspection PhpUndefinedFieldInspection */
-            $cleverData = $this->pullInCleverData()->data;
-            $cleverData['data']['clientId'] = $this->client->id;
-            $cleverRosterLink = $cleverData['links'][$rosterLinkNumber]['uri'];
+            foreach($rosters as $roster) {
+                if(isset($roster->metadata->data['clever_id'])) {
+                    $section = $this->clever->section($roster->metadata->data['clever_id']);
+                    if (isset($section->data['error'])) {
+                        // We no longer have access to this section...
+                        $this->warn('we no longer have access to this section...');
+                        $roster->delete();
+                    }
+                    else {
+                        $this->info('Syncing '.$roster->metadata->data['clever_id'].'...');
+                        $this->workWithStaffRosterData($section->data);
+                    }
+                } else {
+                    $this->warn('nothing to do');
+                }
+            }
 
-            $this->updateRosterData($cleverRosterLink);
+//            $this->metadata = $this->getCleverMetadata($this->cleverId);
+//            /* @noinspection PhpUndefinedFieldInspection */
+//            $cleverData                     = $this->pullInCleverData()->data;
+//            $cleverData['data']['clientId'] = $this->client->id;
+//            $cleverRosterLink               = $cleverData['links'][$rosterLinkNumber]['uri'];
+//
+//            $this->updateRosterData($cleverRosterLink);
         } catch (Exception $e) {
-            $error = 'Caught exception: '.$e->getMessage().' File: '.$e->getFile().' Line: '.$e->getLine();
-            activity()
-                ->performedOn($this->client)
-                ->withProperties([
-                    'cleverId' => $this->cleverId,
-                    'clientId' => $this->clientId,
-                    'type'     => $this->type,
-                    'error'    => $error
-                ])
-                ->log('clever-sync-section');
-            $this->error($error);
-            return;
+            $this->error('Caught exception: '.$e->getMessage().' File: '.$e->getFile().' Line: '.$e->getLine());
+            die();
         }
         $this->info('Roster information has been updated.');
     }
 
-
-    /**
-     * @param $cleverRosterLink
-     *
-     * @throws \Exception
-     */
-    protected function updateRosterData($cleverRosterLink)
-    {
-        if ($this->option('debug')) {
-            $this->output->note('Syncing '.$this->type.'s roster information...');
-        }
-        /* @noinspection PhpUndefinedMethodInspection */
-        $cleverSections = $this->clever->getUrl(substr($cleverRosterLink, 6));
-        $this->workWithStaffRosterData($cleverSections);
-    }
 
 
     /**
@@ -137,7 +129,7 @@ class SectionSync extends Command
         }
         $cleverData = $this->clever->$type($this->cleverId);
         if (isset($cleverData->data['error'])) {
-            throw new Exception('clever returned an error: "'.$cleverData->data['error'].'" while fetching '.$type.' data');
+            throw new Exception('clever returned an error: "' . $cleverData->data['error'] . '" while fetching ' . $type . ' data');
         }
 
         return $cleverData;
@@ -154,7 +146,6 @@ class SectionSync extends Command
         $teacherData = $this->clever->teacher($section['data']['teacher']);
         if (isset($section['data']['id'])) {
             // Here we are going to update the roster information
-//            dd($teacherData->data);
             $this->upsertSection($section['data'], $teacherData->data['data']);
             if ($this->option('debug')) {
                 $this->info('Roster created/updated...');
