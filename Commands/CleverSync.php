@@ -14,6 +14,7 @@ use Carbon\Carbon;
 use LGL\Clever\Api;
 use Illuminate\Console\Command;
 use Illuminate\Support\Facades\Hash;
+use LGL\Clever\Exceptions\Exception;
 use LGL\Core\Accounts\Models\Address;
 use LGL\Core\Accounts\Models\Client;
 use LGL\Core\Accounts\Models\Site as Sites;
@@ -31,7 +32,7 @@ use LGL\Core\Models\Metadata;
 /**
  * Exceptions to be thrown
  */
-use LGL\Clever\Exceptions\EmailInUse;
+
 use LGL\Clever\Exceptions\ExceededEmailCount;
 use LGL\Clever\Exceptions\ExceededCleverIdCount;
 use LGL\Clever\Exceptions\CleverIdMissMatch;
@@ -45,25 +46,33 @@ class CleverSync extends Command
     /**
      * @var Client
      */
-    protected $client;
+    protected Client $client;
 
     /**
      * @var string
      */
-    protected $redisKey;
+    protected string $redisKey;
 
     /**
      * @var Api
      */
-    protected $clever;
+    protected API $clever;
 
-    protected $districts = [];
-    protected $schools   = [];
-    protected $teachers  = [];
-    protected $students  = [];
+    protected array $districts = [];
+    protected array $schools = [];
+    protected array $teachers = [];
+    protected array $students = [];
     protected $preferences;
     protected $limit;
-    protected $districtId;
+
+
+    /********** New Variables **********/
+    protected ?string $districtId = null;
+    protected array $cleverDistrictData;
+    protected ?string $lastEventId = null;
+    protected ?District $district = null;
+    protected $progressBar;
+
 
     /**
      * The name and signature of the console command.
@@ -91,452 +100,627 @@ class CleverSync extends Command
         parent::__construct();
     }
 
-    /**
-     * Execute the console command.
-     *
-     * @return mixed
-     */
     public function handle()
     {
-        if ($this->option('debug')) {
-            // $this->lastEvent();
-        } else {
-            $this->limit = $this->option('limit');
-            $clientId    = (int) $this->argument('clientId');
 
-            // Get Clients key
-            $this->client   = $this->verify($clientId);
-            $this->settings = config('settings');
-            $this->redisKey = $this->client->id . ':' . 'clever_sync';
-            $this->clever   = new Api($this->client->metadata->data['api_secret']);
-            $this->setPreferneces();
-            $this->districts();
-            $this->admins();
-            $this->sites();
-            $this->schoolAdmins();
-            $this->teachers();
-            $this->students();
-            $this->sections();
-            $this->client->synced_on = Carbon::now()->toDateTimeString();
-            $this->client->save();
-        }
+        $this->warn('Starting Sync...');
+        $this->limit = $this->option('limit');
+
+        $clientId = (int)$this->argument('clientId');
+
+        // Get Clients key
+        $this->client = $this->verify($clientId);
+        $this->settings = config('settings');
+        $this->redisKey = $this->client->id . ':' . 'clever_sync';
+        $this->clever = new Api($this->client->metadata->data['api_secret']);
+
+        $this->setPreferneces();
+
+        $this->syncDistrictInformation();
+        $this->info('  ! District Information Should Have Synced');
+
+        $this->syncAdminsInformation();
+        $this->info('  ! Admins Information Should Have Synced');
+
+        $this->syncSitesInformation();
+        $this->info('  ! Sites Information Should Have Synced');
+
+        $this->syncPrincipalsInformation();
+        $this->info('  ! Principals Information Should Have Synced');
+//        dd('Principals Information Should Have Synced');
+
+        $this->syncTeachersInformation();
+        $this->info('  ! Teachers Information Should Have Synced');
+//        dd('Teachers Information Should Have Synced');
+
+        $this->syncStudentsInformation();
+        $this->info('  ! Students Information Should Have Synced');
+//        dd('Students Information Should Have Synced');
+
+        $this->syncSectionsInformation();
+        $this->info('  ! Sections Information Should Have Synced');
+//        dd('Sections Information Should Have Synced');
+
+
+        $this->client->synced_on = Carbon::now()->toDateTimeString();
+        $this->client->save();
+
         $this->info('Sync Complete');
         return true;
     }
 
-    private function verify($clientId)
+    /********     | New Methods |         *************/
+
+    private function verify(int $clientId): ?Client
     {
-        try {
-            $client = Client::find($clientId);
+        $client = Client::find($clientId);
 
-            if ($client->deleted_at === null && $client->partner_id === 1) {
-                return $client;
-            }
-        } catch (\Exception $e) {
-            $this->error('Client not found or is not a Clever Client');
-            exit;
+        // Check if the client is not found
+        if (is_null($client)) {
+            throw new \Exception('Client not found.');
         }
-        
 
-        throw new \Exception('Client not found or is not a Clever Client');
+        // Check if the client is deleted
+        if ($client->deleted_at !== null) {
+            throw new \Exception('Client has been deleted.');
+        }
+
+        // Check if the client is not a Clever Client
+        if ($client->partner_id !== 1) {
+            throw new \Exception('Client is not a Clever Client.');
+        }
+
+        return $client;
     }
 
-    public function districts()
+
+    /************   || Sync District Information ||   ************/
+    // ToDo: Check title for a match and update / add Clever Id.
+    public function syncDistrictInformation(): void
     {
-        $cleverDistricts = $this->clever->districts();
-        $this->output->note('Syncing ' . count($cleverDistricts['data']) . ' District\'s Information...');
-        $bar = $this->output->createProgressBar(count($cleverDistricts['data']));
-        foreach ($cleverDistricts['data'] as $cleverDistrict) {
-            // Check Clever ID through MetaData... the relationship is missleading.
+        $this->output->note('Syncing District Information...');
 
-            $this->districtId = $cleverDistrict['data']['id'];
-            /** @noinspection PhpUndefinedMethodInspection */
-            $cleverDistrictData = $this->clever->district($cleverDistrict['data']['id']);
-            /** @noinspection PhpUndefinedMethodInspection */
-            $lastEventId = $cleverDistrictData->getEvents(['limit' => '1', 'ending_before' => 'last']);
+        $cleverDistricts = $this->getCleverDistricts();
 
-            /**
-             * Check if district exists
-             */
-            if($this->cleverIdExists($cleverDistrict['data']['id'], Metadata::$metableClasses['districts'])) {
-                // Check we have a district matching the clever id?
-                $createDistrict = District::where('client_id', $this->client->id)->with(['metadata' => function($q) use ($cleverDistrict) {
-                    $q->ofCleverId($cleverDistrict['data']['id']);
-                }])->first();
-            }
-            else {
-                $createDistrict = new District();
-                /* @noinspection PhpUndefinedFieldInspection */
-                $createDistrict->title = trim($cleverDistrict['data']['name']);
-                /* @noinspection PhpUndefinedFieldInspection */
-                $createDistrict->client_id = $this->client->id;
-                $createDistrict->save();
-            }
-            
-            
-            $data = [
-                'mdr_number' => ($cleverDistrict['data']['mdr_number']) ?? null,
-                'clever_id'  => $cleverDistrict['data']['id'],
-                'partner_id' => 1,
-                'last_event' => $lastEventId,
-            ];
-            $createDistrict->setMetadata($data);
+        $this->checkForMultipleDistricts($cleverDistricts);
 
-            /* @noinspection PhpUndefinedFieldInspection */
-            $this->districts[$cleverDistrict['data']['id']] = $createDistrict->id;
-            $bar->advance();
-        }
-        $bar->finish();
-        $this->output->newLine();
+        $cleverDistrict = $this->getFirstCleverDistrict($cleverDistricts);
+
+
+        $this->districtId = $cleverDistrict['data']['id'];
+
+        $cleverDistrictData = $this->getCleverDistrictDataById($this->districtId);
+
+        $this->district = $this->ensureDistrictExists($cleverDistrictData);
+
+        $data = [
+            'mdr_number' => ($cleverDistrictData->data['mdr_number']) ?? null,
+            'clever_id' => $cleverDistrictData->data['id'],
+            'partner_id' => 1,
+            'last_event' => $cleverDistrictData->getEvents(['limit' => '1', 'ending_before' => 'last'])[0]->data['id'],
+            'clever_data' => $cleverDistrictData->data['data'],
+        ];
+
+        $this->district->title = $cleverDistrictData->data['data']['name'];
+        $this->district->setMetadata($data);
+
+        $this->district->save();
     }
 
-    public function admins()
+    private function getCleverDistricts()
+    {
+        return $this->clever->districts();
+    }
+
+    private function checkForMultipleDistricts(array $cleverDistricts): void
+    {
+        if (count($cleverDistricts['data']) > 1) {
+            throw new Exception("We have more than one district to sync; this is not supported at this time. \n" .
+                'Client ID: ' . $this->client->id . ' has ' . count($cleverDistricts['data']) . ' districts to sync.');
+        }
+    }
+
+    private function getFirstCleverDistrict(array $cleverDistricts)
+    {
+        return $cleverDistricts['data'][0];
+    }
+
+    private function getCleverDistrictDataById(string $districtId)
+    {
+        return $this->clever->district($districtId);
+    }
+
+
+    public function ensureDistrictExists($cleverDistrict)
+    {
+        if ($this->cleverIdExists($cleverDistrict->data['id'], Metadata::$metableClasses['districts'])) {
+            return $this->findDistrictByCleverId($cleverDistrict->data['id']);
+        }
+
+        return $this->createNewDistrict($cleverDistrict->data);
+    }
+
+    private function findDistrictByCleverId(string $cleverId)
+    {
+        $districts = District::where('client_id', $this->client->id)
+            ->with(['metadata' => function ($q) use ($cleverId) {
+                $q->ofCleverId($cleverId);
+            }])
+            ->get();
+
+        if ($districts->count() > 1) {
+            throw new \Exception("Multiple districts found with the same Clever ID for the client.");
+        }
+
+        return $districts->first();
+    }
+
+    private function createNewDistrict($cleverData): District
+    {
+        $district = new District([
+            'title' => trim($cleverData->data['name']),
+            'client_id' => $this->client->id,
+        ]);
+
+        $district->save();
+
+        $data = [
+            'mdr_number' => ($cleverData->data['mdr_number']) ?? null,
+            'clever_id' => $cleverData->data['id'],
+            'partner_id' => 1,
+            'last_event' => $this->clever->getEvents($this->districtId)[0]->data['id'] ?? null,
+        ];
+
+        $district->setMetadata($data);
+
+        return $district;
+    }
+
+    /************   || Sync District Admins ||   ************/
+
+    public function syncAdminsInformation(): void
+    {
+        $admins = $this->fetchCleverDistrictAdmins();
+        $this->initializeProgressBar(count($admins));
+        foreach ($admins as $cleverUser) {
+            $this->processAdmin($cleverUser);
+        }
+
+        $this->finalizeProgressBar();
+    }
+
+    private function fetchCleverDistrictAdmins(): array
     {
         $admins = $this->clever->districtAdmins();
         $this->output->note('Processing ' . count($admins['data']) . ' district admins...');
-        $bar = $this->output->createProgressBar(count($admins['data']));
-        foreach ($admins['data'] as $cleverUser) {
-
-            /**
-             * Check if admin exists
-             * All: We have to many users associated with the Clever Id | Count Exception: (Human Intervention) Handeled in the checks/exixts methods below
-             * All: We have to many users associated with the eMail address | Count Exception: (Human Intervention) Handeled in the checks/exixts methods below
-             * If: We have an ID match && email match then update the user
-             * ElseIf: We have an ID match && eMails don't match Exception: Missmatch (Human Intervention)
-             * ElseIf: We have an email match && no ID match Exception: Missmatch (Human Intervention)
-             * Else: We have no ID match && no email match then create a new user
-             */
-
-            $user = $this->processCleverUserData($cleverUser);
-
-            $user->first_name = $cleverUser['data']['name']['first'];
-            $user->last_name  = $cleverUser['data']['name']['last'];
-            $user->email      = $cleverUser['data']['email'];
-            $user->save();
-            $user->setMetadata(['clever_id' => $cleverUser['data']['id']]);
-            $user->roles()->detach(2);
-            $user->roles()->attach(2);
-            $bar->advance();
-        }
-
-        $bar->finish();
-        $this->output->newLine();
+        return $admins['data'];
     }
 
-    
-    public function sites()
+    private function processAdmin(array $cleverUser): void
     {
-        foreach ($this->districts as $clever_id => $district) {
-            /** @noinspection PhpUndefinedMethodInspection */
-            $district = $this->clever->district($clever_id);
+        $user = $this->processCleverUserData($cleverUser); // Assuming this method exists and returns a User object
+        $user->update([
+            'first_name' => $cleverUser['data']['name']['first'],
+            'last_name' => $cleverUser['data']['name']['last'],
+            'email' => $cleverUser['data']['email'],
+        ]);
 
-            /** @noinspection PhpUndefinedMethodInspection */
-            $object = $district->getSchools(['limit' => $this->option('schoolslimit')]);
-            $this->output->note('Processing ' . count($object) . ' schools...');
-            $bar = $this->output->createProgressBar(count($object));
-            foreach ($object as $school) {
-                /**
-                 * Check if site exists - Limited on the check - maybe tolerate site names being the same?
-                 * All: We have to many sites associated with the Clever Id | Count Exception: (Human Intervention) Handeled in the checks/exixts methods below
-                 * If: We have an ID match | Update the site
-                 * Else: We have no ID match | Create a new site
-                 */
-                if($this->cleverIdExists($school->data['id'], Metadata::$metableClasses['sites'])) {
-                    // Check we have a site id matching the clever site id?
-                    // $site = Sites::where('client_id', $this->client->id)->with(['metadata' => function($q) use ($school) {
-                    //     $q->ofClever($school->data['id']);
-                    // }])->get();
-                    $site = Sites::where('client_id', $this->client->id)->ofClever($school->data['id'])->first();
-                    $this->checkCleverIdMatch($site->metadata->data['clever_id'], $school->data['id']);
-                }
-                else {
-                    $site             = new Sites();
-                    $site->client_id  = $this->client->id;
-                    $site->title      = $school->name;
-                    /* @noinspection PhpUndefinedFieldInspection */
-                    $site->edit = false;
-                }
+        $user->setMetadata(['clever_id' => $cleverUser['data']['id'], 'clever_information' => $cleverUser['data']]);
+        $user->roles()->syncWithoutDetaching([2]); // Detaches old roles and attaches new ones
 
-                if (empty($school->data['high_grade'])) {
-                    $highGrade = null;
-                } else {
-                    $highGrade = $this->checkGrade($school->data['high_grade']) ?? null;
-                }
-                if (empty($school->data['low_grade'])) {
-                    $lowGrade = null;
-                } else {
-                    $lowGrade = $this->checkGrade($school->data['low_grade']) ?? null;
-                }
-
-                $metaInformation               = $this->coreData($school, 'site', 1);
-                $metaInformation['high_grade'] = $highGrade->id ?? null;
-                $metaInformation['low_grade']  = $lowGrade->id ?? null;
-                $address                       = new Address();
-                $address->street_1             = $school->data['location']['address'] ?? null;
-                $address->city                 = $school->data['location']['city'] ?? null;
-                $address->state                = $school->data['location']['state'] ?? null;
-                $address->zip_code             = $school->data['location']['zip'] ?? null;
-                $address->save();
-                
-                $site->address_id = $address->id;
-                $site->save();
-
-                $site->setMetadata($metaInformation);
-                $this->schools[$school->data['id']] = $site->id;
-                $bar->advance();
-            }
-            $bar->finish();
-        }
-        $this->output->newLine();
+        $this->progressBar->advance();
     }
 
-    // Should this be principles?
-    public function schoolAdmins()
-    {
+    /********     | Sites |         *************/
 
+    public function syncSitesInformation(): void
+    {
+        $schools = $this->fetchCleverSchools();
+        $this->initializeProgressBar(count($schools));
+
+        foreach ($schools as $school) {
+            $this->processSchool($school);
+        }
+
+        $this->finalizeProgressBar();
+
+    }
+
+    private function fetchCleverSchools(): array
+    {
+        $district = $this->clever->district($this->district->id);
+        $schools = $district->getSchools(['limit' => $this->option('schoolslimit')]);
+
+        $this->output->note('Processing ' . count($schools) . ' schools...');
+        return $schools;
+    }
+
+    private function processSchool($school): void
+    {
+        $site = $this->findOrCreateSite($school);
+
+
+        $address = $this->createOrUpdateAddress($school);
+        $site->address_id = $address;
+        $site->save();
+
+        $metaInformation = $this->coreData($school, 'site', 1);
+        $metaInformation['high_grade'] = $highGrade->id ?? null;
+        $metaInformation['low_grade'] = $lowGrade->id ?? null;
+        $metaInformation['clever_id'] = $school->data['id'];
+        $metaInformation['clever_information'] = $school->data;
+
+        $site->setMetadata($metaInformation);
+
+        $this->schools[$school->data['id']] = $site->id;
+    }
+
+    private function findOrCreateSite($school): Sites
+    {
+        if ($this->cleverIdExists($school->data['id'], Metadata::$metableClasses['sites'])) {
+            return $this->findSiteByCleverId($school);
+        }
+
+        return $this->createNewSite($school);
+    }
+
+    private function findSiteByCleverId($school)
+    {
+        $site = Sites::where('client_id', $this->client->id)
+            ->ofClever($school->data['id'])
+            ->first();
+
+        $this->checkCleverIdMatch($site->metadata->data['clever_id'], $school->data['id']);
+
+        return $site;
+    }
+
+    private function createNewSite($school)
+    {
+        $site = new Sites();
+        $site->client_id = $this->client->id;
+        $site->title = $school->name;
+        $site->edit = false;
+
+        return $site;
+    }
+
+    private function getGrade($schoolData, $gradeType): Grades|\Illuminate\Database\Query\Builder|null
+    {
+        return empty($schoolData[$gradeType]) ? null : $this->checkGrade($schoolData[$gradeType]) ?? null;
+    }
+
+    private function createOrUpdateAddress($schoolData): int
+    {
+        $address = new Address();
+        $address->street_1 = $schoolData->data['location']['address'] ?? null;
+        $address->city = $schoolData->data['location']['city'] ?? null;
+        $address->state = $schoolData->data['location']['state'] ?? null;
+        $address->zip_code = $schoolData->data['location']['zip'] ?? null;
+        $address->save();
+
+        return $address->id;
+    }
+
+
+    /********     | Principals |         *************/
+    public function syncPrincipalsInformation(): void
+    {
         $admins = $this->clever->school_admins();
         $this->output->note('Processing ' . count($admins['data']) . ' school admins...');
-        $bar    = $this->output->createProgressBar(count($admins['data']));
+        $this->initializeProgressBar(count($admins['data']));
+
         foreach ($admins['data'] as $cleverUser) {
-            /**
-             * Check if schoolAdmin exists
-             * All: We have to many users associated with the Clever Id | Count Exception: (Human Intervention) Handeled in the checks/exixts methods below
-             * All: We have to many users associated with the eMail address | Count Exception: (Human Intervention) Handeled in the checks/exixts methods below
-             * If: We have an ID match && email match then update the user
-             * ElseIf: We have an ID match && eMails don't match Exception: Missmatch (Human Intervention)
-             * ElseIf: We have an email match && no ID match Exception: Missmatch (Human Intervention)
-             * Else: We have no ID match && no email match then create a new user
-             */
-            $user = $this->processCleverUserData($cleverUser);
-            
-            $metadata         = ['staff_id' => $cleverUser['data']['staff_id'], 'clever_id' => $cleverUser['data']['id']];
-            $user->first_name = $cleverUser['data']['name']['first'];
-            $user->last_name  = $cleverUser['data']['name']['last'];
-            $user->email      = $cleverUser['data']['email'];
-            // Save user
-            $user->save();
-            $user->setMetadata($metadata);
-            $user->roles()->detach(2);
-            $user->roles()->attach(2);
-            $attachToSchools = [];
-            foreach($cleverUser['data']['schools'] as $schoolCleverId) {
-                (array_key_exists($schoolCleverId, $this->schools)) ? array_push($attachToSchools, $this->schools[$schoolCleverId]) : null;
-            }
-            $user->sites()->sync($attachToSchools);
-            $bar->advance();
+            $this->processPrincipal($cleverUser);
         }
-        $bar->finish();
-        $this->output->newLine();
+
+        $this->finalizeProgressBar();
     }
 
-    public function teachers()
+    private function processPrincipal($cleverUser): void
     {
-        /** @noinspection PhpUndefinedMethodInspection */
+        $user = $this->processCleverUserData($cleverUser);
+        $metadata = $this->getPrincipalMetadata($cleverUser);
+        $this->updateUserDetails($user, $cleverUser, $metadata);
+        $attachToSchools = $this->getSchoolsToAttach($cleverUser['data']['schools']);
+        $this->syncUserToSites($user, $attachToSchools);
+
+    }
+
+    private function getPrincipalMetadata($cleverUser): array
+    {
+        return [
+            'staff_id' => $cleverUser['data']['staff_id'],
+            'clever_id' => $cleverUser['data']['id'],
+            'clever_information' => $cleverUser['data']['id']
+        ];
+    }
+
+    private function updateUserDetails(EloquentUser $user, $cleverUser, $metadata)
+    {
+        $user->first_name = $cleverUser['data']['name']['first'];
+        $user->last_name = $cleverUser['data']['name']['last'];
+        $user->email = $cleverUser['data']['email'];
+        $user->save();
+        $user->setMetadata($metadata);
+        $user->roles()->syncWithoutDetaching([2]);
+    }
+
+    private function getSchoolsToAttach($schoolCleverIds)
+    {
+        $attachToSchools = [];
+        foreach ($schoolCleverIds as $schoolCleverId) {
+            if (array_key_exists($schoolCleverId, $this->schools)) {
+                array_push($attachToSchools, $this->schools[$schoolCleverId]);
+            }
+        }
+        return $attachToSchools;
+    }
+
+    private function syncUserToSites($user, $attachToSchools)
+    {
+        $user->sites()->syncWithoutDetaching($attachToSchools);
+    }
+
+
+    /**********************     Sync Teacher Information    **********************/
+    public function syncTeachersInformation()
+    {
         $district = $this->clever->district($this->districtId);
-//        $directTeachers = $this->clever->teacher();
-//        $teachers = $this->clever->teachers();
-        /** @noinspection PhpUndefinedMethodInspection */
         $object = $district->getTeachers(['limit' => $this->limit]);
-        if (count($object) >= 1 & $object[0]->id !== null) {
+
+        if (count($object) >= 1 && $object[0]->id !== null) {
             $this->output->note('Processing ' . count($object) . ' teachers...');
             echo "\n";
             $bar = $this->output->createProgressBar(count($object));
+
             foreach ($object as $cleverUser) {
                 if (!is_null($cleverUser->id)) {
-
-                    /**
-                     * Check if admin exists
-                     * All: We have to many users associated with the Clever Id | Count Exception: (Human Intervention) Handeled in the checks/exixts methods below
-                     * All: We have to many users associated with the eMail address | Count Exception: (Human Intervention) Handeled in the checks/exixts methods below
-                     * If: We have an ID match && email match then update the user
-                     * ElseIf: We have an ID match && eMails don't match Exception: Missmatch (Human Intervention)
-                     * ElseIf: We have an email match && no ID match Exception: Missmatch (Human Intervention)
-                     * Else: We have no ID match && no email match then create a new user
-                     */
-                    /** Hacked to work with every other users for Fsake */
-                    $cleverUserArray['data'] = $cleverUser->data;
-                    $user = $this->processCleverUserData($cleverUserArray);
-
-                    $data = $this->coreData($cleverUser, 'teacher', 1);
-                    /* @noinspection PhpUndefinedFieldInspection */
-                    $data['created by'] = 'clever';
-                    $user->save();
-                    $user->setMetadata($data);
-                    $user->roles()->detach(3);
-                    $user->roles()->attach(3);
-                    /* @noinspection PhpUndefinedMethodInspection */
-                    $attachToSchools = [];
-                    foreach($cleverUserArray['data']['schools'] as $schoolCleverId) {
-                        (array_key_exists($schoolCleverId, $this->schools)) ? array_push($attachToSchools, $this->schools[$schoolCleverId]) : null;
-                    }
-                    $user->sites()->sync($attachToSchools);
-                    $this->teachers[$cleverUser->id] = $user->id;
+                    $this->processTeacher($cleverUser);
                 }
                 $bar->advance();
             }
+
             $bar->finish();
         } else {
-            /* @noinspection PhpUndefinedFieldInspection */
             $this->output->note('No Teacher Information to Sync!');
         }
+
         $this->output->newLine();
     }
 
-    public function students()
+    private function processTeacher($cleverUser)
     {
-//        $this->output->note('Syncing Student Information...');
+
+        // ToDo: This should be cleaned up and put back to using the object
+        //       For some reason the object is turned into an array and I can't figure out why.
+        //       I think this has to do with processing the Users Data and finding or creating the user.
+        //       Type juggling sucks.
+        $cleverUserArray['data'] = $cleverUser->data;
+        $user = $this->processCleverUserData($cleverUserArray);
+        $data = $this->coreData($cleverUser, 'teacher', 1);
+        $data['created by'] = 'Clever Process';
+        $data['clever_information'] = $cleverUserArray['data'];
+
+        $this->updateTeacherDetails($user, $data);
+        $attachToSchools = $this->getSchoolsToAttach($cleverUserArray['data']['schools']);
+        $this->syncUserToSites($user, $attachToSchools);
+
+        $this->teachers[$cleverUser->id] = $user->id;
+    }
+
+    private function updateTeacherDetails($user, $data)
+    {
+        $user->save();
+        $user->setMetadata($data);
+        $user->roles()->syncWithoutDetaching([3]);
+    }
+
+
+    /**********************     Sync Student Information    **********************/
+    public function syncStudentsInformation()
+    {
         $district = $this->clever->district($this->districtId);
         /** @noinspection PhpUndefinedMethodInspection */
         $object = $district->getStudents(['limit' => $this->limit]);
 
         if (count($object) >= 1 && $object[0]->id !== null) {
-            /* @noinspection PhpUndefinedFieldInspection */
             $this->output->note('Processing ' . count($object) . ' students...');
             $bar = $this->output->createProgressBar(count($object));
+
             foreach ($object as $cleverUser) {
                 if (!is_null($cleverUser->id)) {
-                    $dob                   = new Carbon($cleverUser->data['dob']);
-                    $data                  = $this->coreData($cleverUser, 'student', 1);
-                    $data['date_of_birth'] = $dob->toDateString();
-                    $data['delta']         = Calc::driver('delta')->calc([
-                        'date_of_birth' => $dob->toDateString(),
-                        'grade'         => (int) $cleverUser->data['grade'] ?? null,
-                        'client'        => $this->client
-                    ]);
-                    $data['updated by'] = 'clever';
-                    $cleverUserArray['data'] = $cleverUser->data;
-                    $cleverUserArray['data']['foreign_id'] = $data['foreign_id'];
-                    
-
-                    $user = $this->processCleverUserData($cleverUserArray);
-
-                    // $user->username = strtolower($this->getUsername($cleverUserArray, 'user'));
-                    // /* @noinspection PhpUndefinedMethodInspection */
-                    // $user->password  = Crypt::encrypt($this->getPassword($cleverUserArray, 'user'));
-                    // $user->client_id = $this->client->id;
-                    // Save user
-                    $user->save();
-                    $user->setMetadata($data);
-                    $user->roles()->detach(4);
-                    $user->roles()->attach(4);
-                    /* @noinspection PhpUndefinedMethodInspection */
-                    $attachToSchools = [];
-                    foreach($cleverUserArray['data']['schools'] as $schoolCleverId) {
-                        (array_key_exists($schoolCleverId, $this->schools)) ? array_push($attachToSchools, $this->schools[$schoolCleverId]) : null;
-                    }
-                    $user->sites()->sync($attachToSchools);
-                    $this->students[$cleverUser->id] = $user->id;
+                    $this->processStudent($cleverUser);
                 }
                 $bar->advance();
             }
             $bar->finish();
         } else {
-            /* @noinspection PhpUndefinedFieldInspection */
             $this->output->error('No Student Information to Sync!');
         }
+
         $this->output->newLine();
     }
 
-    public function sections()
+    private function processStudent($cleverUser)
     {
-        
+        $dob = new Carbon($cleverUser->data['dob']);
+        $data = $this->coreData($cleverUser, 'student', 1);
+        $data = array_merge($data, [
+            'date_of_birth' => $dob->toDateString(),
+            'delta' => Calc::driver('delta')->calc([
+                'date_of_birth' => $dob->toDateString(),
+                'grade' => (int)$cleverUser->data['grade'] ?? null,
+                'client' => $this->client
+            ]),
+            'updated by' => 'clever',
+            'clever_information' => $cleverUser->data
+        ]);
+
+        $cleverUserArray['data'] = $cleverUser->data;
+        $cleverUserArray['data']['foreign_id'] = $data['foreign_id'];
+
+        $user = $this->processCleverUserData($cleverUserArray);
+        $this->updateStudentDetails($user, $data);
+
+        $attachToSchools = $this->getSchoolsToAttach($cleverUserArray['data']['schools']);
+        $this->syncUserToSites($user, $attachToSchools);
+
+        $this->students[$cleverUser->id] = $user->id;
+    }
+
+    private function updateStudentDetails($user, $data)
+    {
+        $user->save();
+        $user->setMetadata($data);
+        $user->roles()->syncWithoutDetaching([4]);
+    }
+
+
+    /**********************     Sync Section Information    **********************/
+    public function syncSectionsInformation()
+    {
         $district = $this->clever->district($this->districtId);
-        /** @noinspection PhpUndefinedMethodInspection */
         $sections = $district->getSections(['limit' => $this->limit]);
+
         if (count($sections) >= 1 && $sections[0]->id !== null) {
-            /* @noinspection PhpUndefinedFieldInspection */
             $this->output->note('Processing ' . count($sections) . ' sections...');
             $bar = $this->output->createProgressBar(count($sections));
+
             foreach ($sections as $section) {
-                $data = $this->coreData($section, 'section', 1);
-                if (!is_null($section->id) & !empty($data['teachers']) & !empty($data['teacher']) && !empty($this->teachers[$data['teacher']])) {
-                    /**
-                     * Check if roster exists
-                     * All: We have to many rosters associated with the Clever Id | Count Exception: (Human Intervention) Handeled in the checks/exixts methods below
-                     * If: We have an ID match update the section
-                     * Else: We have no ID match create the section
-                     */
-                    if ($this->cleverIdExists($section->data['id'], Metadata::$metableClasses['rosters'])) {
-                        $roster = Roster::where('client_id', $this->client->id)->with(['metadata' => function($q) use ($section) {
-                            $q->ofCleverId($section->data['id']);
-                        }])->first();
-                        $replace = true;
-
-                    } else {
-                        dd($section);
-                        $roster = new Roster();
-                    }
-
-                    /** Process the fuck out of the data... */
-                    $term = (isset($data['term_id'])) ? $this->checkTerm($data['term_id']) : null;
-                    $subject = (isset($data['subject_id'])) ? $this->checkSubject($data['subject']): null;
-                    $course = (isset($data['course']) && isset($data['number'])) ? $this->checkCourse($data['name'], $data['number']) : null; 
-                    $period = (isset($data['period'])) ? $this->checkPeriod($data['period']) : null;
-
-                    // Build Metadata
-                    $metadata        = [
-                        'subject_id' => $subject->id ?? null,
-                        'term_id'    => $term->id ?? null,
-                        'course_id'  => $course->id ?? null,
-                        'period_id'  => $period->id ?? null,
-                        'sis_id'     => $data['sis_id'] ?? null,
-                        'clever_id'  => $section->id ?? null,
-                        'created by' => 'clever'
-                    ];
-
-                    if (!isset($termInformation['start_date']) || !isset($termInformation['end_date'])) {
-                        $startDateString = null;
-                        $endDateString = null;
-                        $description = 'Term: N/A';
-                    } else {
-                        $startDate        = new Carbon($termInformation['start_date']);
-                        $startDateString = $startDate->toDateTimeString();
-                        $endDate          = new Carbon($termInformation['end_date']);
-                        $endDateString   = $endDate->toDateTimeString();
-                        $description = $termInformation['name'] . ', ' . $startDateString;
-                    }
-
-                    $roster->type_id   = 1;
-                    $roster->title     = $data['name'] . 'Start:' . $startDateString . ' (Clever)';
-                    $roster->user_id   = $this->teachers[$data['teacher']];
-                    $roster->site_id   = $this->schools[$data['school']];
-                    $roster->client_id = $this->client->id;
-                    /* @noinspection PhpUndefinedFieldInspection */
-                    $roster->writeable = false;
-                    /* @noinspection PhpUndefinedFieldInspection */
-                    $roster->start_date = $startDateString;
-                    /* @noinspection PhpUndefinedFieldInspection */
-                    $roster->end_date = $endDateString;
-                    /* @noinspection PhpUndefinedFieldInspection */
-                    $roster->description = $description;
-                    $roster->save();
-                    $roster->setMetadata($metadata);
-                    // Attach Teachers to Rosters
-                    $teachers = [];
-                    foreach ($data['teachers'] as $cleverTeacherId) {
-                        array_push($teachers, $this->teachers[$cleverTeacherId]);
-                    }
-                    $roster->access()->detach();
-                    $roster->access()->attach($teachers);
-                    // Attach Students to Roster
-                    $students = [];
-                    foreach ($data['students'] as $cleverStudentId) {
-                        if (!empty($this->students[$cleverStudentId])) {
-                            array_push($students, $this->students[$cleverStudentId]);
-                        }
-                    }
-                    $roster->users()->detach();
-                    $roster->users()->attach($students);
-
+                if (!is_null($section->id)) {
+                    $this->processSection($section);
                 }
                 $bar->advance();
             }
+
             $bar->finish();
         } else {
             $this->info('No Section/Class Information!');
         }
         $this->output->newLine();
     }
+
+    private function processSection($section)
+    {
+        $data = $this->coreData($section, 'section', 1);
+        if (empty($data['teachers']) || empty($data['teacher']) || empty($this->teachers[$data['teacher']])) {
+            return;
+        }
+
+        $roster = $this->findOrCreateRoster($section);
+
+
+        $this->syncTeachersToRoster($roster, $data['teachers']);
+        $this->syncStudentsToRoster($roster, $data['students']);
+    }
+
+    private function findOrCreateRoster($section)
+    {
+        $roster = null;
+
+        $startDate = (isset($section->data['start_date'])) ? new Carbon($section->data['start_date']) : null;
+        $endDate = (isset($section->data['end_date'])) ? new Carbon($section->data['end_date']) : null;
+
+        if ($this->cleverIdExists($section->data['id'], Metadata::$metableClasses['rosters'])) {
+            $roster = Roster::where('client_id', $this->client->id)
+                ->with(['metadata' => function ($q) use ($section) {
+                    $q->ofCleverId($section->data['id']);
+                }])
+                ->first();
+        }
+
+        if ($roster === null) {
+            $roster = new Roster();
+            $roster->type_id   = 1;
+
+
+            // Pulls Teacher ID from an Array of Teachers collected
+            $roster->user_id = $this->teachers[$section->data['teacher']];
+            // Pulls Site ID from an Array of Sites collected
+            $roster->site_id   = $this->schools[$section->data['school']];
+            $roster->client_id = $this->client->id;
+            $roster->writeable = false;
+
+            // These may not exist
+            $roster->start_date = $startDate;
+            $roster->end_date = $endDate;
+
+
+            $rosterTitle = $section->data['name'];
+            $rosterTitle = ($startDate !== null) ? $rosterTitle . ' (' . $startDate->format('Y-m-d') . ')' : $rosterTitle;
+            $rosterTitle = $rosterTitle . ' (Clever)';
+
+
+            $roster->title = $rosterTitle;
+            $roster->description = "";
+
+            $roster->save();
+            $roster->setMetadata($this->buildRosterMetadata($section));
+        }
+
+        return $roster;
+    }
+
+    public function buildRosterMetadata($section) {
+        // Clever Data Start Dates
+
+        $subject = (isset($section->data['subject'])) ? $this->checkSubject($section->data['subject']) : null;
+        $period = (isset($section->data['period'])) ? $this->checkPeriod($section->data['period']) : null;
+        $course = (isset($section->data['course']) && isset($section->data['number'])) ? $this->checkCourse($section->data['name'], $section->data['number']) : null;
+
+
+        $metadata        = [
+            'subject_id' => $subject->id ?? null,
+            'course_id'  => $course->id ?? null,
+            'period_id'  => $period->id ?? null,
+            'sis_id'     => $section->data['sis_id'] ?? null,
+            'clever_id'  => $section->data['id'] ?? null,
+            'created by' => 'clever',
+            'clever_data' => $section->data,
+        ];
+
+        return $metadata;
+    }
+    private function syncTeachersToRoster($roster, $teacherCleverIds)
+    {
+        $teachers = [];
+        foreach ($teacherCleverIds as $cleverTeacherId) {
+            if (isset($this->teachers[$cleverTeacherId])) {
+                array_push($teachers, $this->teachers[$cleverTeacherId]);
+            }
+        }
+        $roster->access()->syncWithoutDetaching($teachers); //
+    }
+
+    private function syncStudentsToRoster($roster, $studentCleverIds)
+    {
+        $students = [];
+        foreach ($studentCleverIds as $cleverStudentId) {
+            if (isset($this->students[$cleverStudentId])) {
+                array_push($students, $this->students[$cleverStudentId]);
+            }
+        }
+        $roster->users()->syncWithoutDetaching($students);
+    }
+
+
+// Additional helper functions like buildMetadata, getTermInformation,
+// updateRosterDetails,
+
+
+    private function initializeProgressBar(int $count): void
+    {
+        $this->progressBar = $this->output->createProgressBar($count);
+    }
+
+    private function finalizeProgressBar(): void
+    {
+        $this->progressBar->finish();
+        $this->output->newLine();
+    }
+
+    /********     | Needed Older Methods |         *************/
 
     /**
      * @param $object
@@ -550,39 +734,39 @@ class CleverSync extends Command
             $return = $object->data;
         } else {
             $basicData = [
-                'clever_id'  => $object->id,
-                'state_id'   => $object->data['state_id'] ?? null,
+                'clever_id' => $object->id,
+                'state_id' => $object->data['state_id'] ?? null,
                 'partner_id' => $partnerId,
             ];
 
             switch ($type) {
                 case 'student':
                     $data = [
-                        'foreign_id'         => $this->getForeignId($object->data),
+                        'foreign_id' => $this->getForeignId($object->data),
                         'hispanic_ethnicity' => (isset($object->data['hispanic_ethnicity']) ? $object->data['hispanic_ethnicity'] : null),
-                        'sis_id'             => $object->data['sis_id'] ?? null,
-                        'iep_status'         => $object->data['iep_status'] ?? null,
-                        'ell_status'         => $object->data['ell_status'] ?? null,
-                        'email'              => $object->data['email'] ?? null,
-                        'frl_status'         => $object->data['frl_status'] ?? null,
-                        'grade'              => $object->data['grade'] ?? null,
-                        'race'               => $object->data['race'] ?? null,
-                        'student_number'     => $object->data['student_number'] ?? null,
-                        'gender'             => $object->data['gender'],
+                        'sis_id' => $object->data['sis_id'] ?? null,
+                        'iep_status' => $object->data['iep_status'] ?? null,
+                        'ell_status' => $object->data['ell_status'] ?? null,
+                        'email' => $object->data['email'] ?? null,
+                        'frl_status' => $object->data['frl_status'] ?? null,
+                        'grade' => $object->data['grade'] ?? null,
+                        'race' => $object->data['race'] ?? null,
+                        'student_number' => $object->data['student_number'] ?? null,
+                        'gender' => $object->data['gender'],
                     ];
                     break;
                 case 'teacher':
                     $data = [
-                        'sis_id'    => $object->data['sis_id'] ?? null,
-                        'title'          => $object->data['title'] ?? null,
+                        'sis_id' => $object->data['sis_id'] ?? null,
+                        'title' => $object->data['title'] ?? null,
                         'teacher_number' => $object->data['teacher_number'] ?? null,
                     ];
                     break;
                 case 'site':
                     $data = [
-                        'phone'         => $object->data['phone'] ?? null,
+                        'phone' => $object->data['phone'] ?? null,
                         'school_number' => $object->data['school_number'] ?? null,
-                        'nces_id'       => $object->data['nces_id'] ?? null,
+                        'nces_id' => $object->data['nces_id'] ?? null,
                     ];
                     break;
                 default:
@@ -593,6 +777,8 @@ class CleverSync extends Command
 
         return $return;
     }
+
+    /****************** Older Methods *******************************/
 
     public function setPreferneces()
     {
@@ -652,7 +838,7 @@ class CleverSync extends Command
             case 'ln':
                 return strtolower($array['data']['name']['last']);
             case 'randnum':
-                return '1234';
+                return 'letsgolearn';
                 break;
             case 'fixed':
                 return $this->preferences['user.static.password'];
@@ -677,8 +863,9 @@ class CleverSync extends Command
         return Grades::firstOrCreate(['name' => $grade, 'slug' => strtolower($grade), 'value' => intval($grade)]);
     }
 
-    public function checkTerm($term)
+    public function getTermInformation($term)
     {
+        dd($term);
         /* @noinspection PhpUndefinedMethodInspection */
         return Terms::firstOrCreate(['name' => $term, 'slug' => strtolower($term)]);
     }
@@ -703,87 +890,82 @@ class CleverSync extends Command
 
     /**
      * HACKS!!!!!
-     * 
+     *
      * This is probably not the best way to do this, but it works for now.
      */
-    public function cleverIdExists($cleverId, $metabletype) {
+    public function cleverIdExists($cleverId, $metabletype)
+    {
         /* @noinspection PhpUndefinedMethodInspection */
-        
+
         if (Metadata::ofCleverId($cleverId)->where('metable_type', $metabletype)->count() > 1) {
             throw new ExceededCleverIdCount('Clever ID exists more than once in the system. ID: ' . $cleverId . ' .');
         }
         return (Metadata::ofCleverId($cleverId)->where('metable_type', $metabletype)->first()) ? true : false;
     }
 
-    public function emailExists($email) {
+    public function emailExists($email)
+    {
         if ($email !== '' && EloquentUser::where('email', $email)->count() > 1) {
             throw new ExceededEmailCount('Email exists more than once in the system. Email: ' . $email . ' .');
         }
         return (EloquentUser::where('email', $email)->first()) ? true : false;
     }
 
-    public function emailInUse($email) {
-        if (EloquentUser::where('email', $email)->first()) {
-            throw new EmailInUse('Email exists more than once in the system. Email: ' . $email . ' .');
-        }
-        return $this;
-    }
-
-    public function checkCleverIdMatch($syncCleverId, $systemCleverId) {
+    public function checkCleverIdMatch($syncCleverId, $systemCleverId): bool
+    {
         if ($syncCleverId !== $systemCleverId) {
             throw new CleverIdMissmatch('Clever ID mismatch. Sync ID: ' . $syncCleverId . '. System ID: ' . $systemCleverId . ' .');
         }
         return false;
     }
 
-    public function checkEmailMatch($syncEmail, $systemEmail) {
+    public function checkEmailMatch($syncEmail, $systemEmail): CleverSync
+    {
         if ($syncEmail !== $systemEmail) {
             throw new EmailMissmatch('Email mismatch. Sync Email: ' . $syncEmail . '. System Email: ' . $systemEmail . ' .');
         }
         return $this;
     }
 
-    public function processCleverUserData($cleverUser) {
+    public function processCleverUserData($cleverUser): EloquentUser
+    {
 
         if ($this->cleverIdExists($cleverUser['data']['id'], Metadata::$metableClasses['users'])) {
             $metadata = Metadata::ofCleverId($cleverUser['data']['id'])->where('metable_type', Metadata::$metableClasses['users'])->first();
             $user = EloquentUser::withTrashed()->where('id', $metadata->metable_id)->first();
             if (!is_null($metadata) & is_null($user)) {
-                throw new Exception('Clever ID exists in MetaData, but no user found. ID: ' . $cleverUser['data']['id'] . ' Name: '.$cleverUser['data']['name']['first']. ' ' . $cleverUser['data']['name']['last']. ' | eMail: '. $cleverUser['data']['email']  .'. Metadata Record Present.');
+                throw new Exception('Clever ID exists in MetaData, but no user found. ID: ' . $cleverUser['data']['id'] . ' Name: ' . $cleverUser['data']['name']['first'] . ' ' . $cleverUser['data']['name']['last'] . ' | eMail: ' . $cleverUser['data']['email'] . '. Metadata Record Present.');
             }
             if ($user->trashed()) {
                 $user->restore();
             }
-        }
-        else if($this->cleverIdExists($cleverUser['data']['id'], Metadata::$metableClasses['users']) && $this->emailExists($cleverUser['data']['email'])) {
+        } else if ($this->cleverIdExists($cleverUser['data']['id'], Metadata::$metableClasses['users']) && $this->emailExists($cleverUser['data']['email'])) {
             // Check we have a district matching the clever id?
             $user = EloquentUser::withTrashed()->where('email', $cleverUser['data']['email'])
-            ->where('client_id', $this->client->id)
-            ->with('metadata')->first();
+                ->where('client_id', $this->client->id)
+                ->with('metadata')->first();
             if (is_null($user->metadata)) {
-                throw new Exception('Clever ID exists, but no metadata found due to empty email. ID: ' . $cleverUser['data']['id'] . ' Name: '.$cleverUser['data']['name']['first']. ' ' . $cleverUser['data']['name']['last']. ' | eMail: '. $cleverUser['data']['email']  .'. Usually indicates a duplicate User record. One is missing the email.');
+                throw new Exception('Clever ID exists, but no metadata found due to empty email. ID: ' . $cleverUser['data']['id'] . ' Name: ' . $cleverUser['data']['name']['first'] . ' ' . $cleverUser['data']['name']['last'] . ' | eMail: ' . $cleverUser['data']['email'] . '. Usually indicates a duplicate User record. One is missing the email.');
             }
             if ($user->metadata->exists() && isset($user->metadata->data['clever_id'])) {
-                ($user->metadata->exists()) ? $this->checkCleverIdMatch($cleverUser['data']['id'], $user->metadata->data['clever_id']) : null ;
+                ($user->metadata->exists()) ? $this->checkCleverIdMatch($cleverUser['data']['id'], $user->metadata->data['clever_id']) : null;
             }
             $this->checkEmailMatch($cleverUser['data']['email'], $user->email);
-        }
-        else {
+        } else {
             $user = new EloquentUser();
-            $user->username   = strtolower($this->getUsername($cleverUser));
+            $user->username = strtolower($this->getUsername($cleverUser));
+            $user->email = $cleverUser['data']['email'];
             /* @noinspection PhpUndefinedMethodInspection */
-            $user->password  =  Hash::make($this->getPassword($cleverUser));
+            $user->password = Hash::make($this->getPassword($cleverUser));
             $user->client_id = $this->client->id;
         }
         if (!is_null($user)) {
             $user->first_name = $cleverUser['data']['name']['first'];
-            $user->last_name  = $cleverUser['data']['name']['last'];
-            $user->email = ($cleverUser->data['email'] ?? null);
+            $user->last_name = $cleverUser['data']['name']['last'];
+            $user->email = ($cleverUser['data']['email'] ?? null);
             return $user;
 
         }
-        throw new CleverNullUser('Clever ID exists, but no user found/null. ID: ' . $cleverUser['data']['id'] . ' Name: '.$cleverUser['data']['name']['first']. ' ' . $cleverUser['data']['name']['last']. ' | eMail: '. $cleverUser['data']['email']  .'. Usually indicates a duplicate User record. One is missing the email.');
-
-
+        throw new CleverNullUser('Clever ID exists, but no user found/null. ID: ' . $cleverUser['data']['id'] . ' Name: ' . $cleverUser['data']['name']['first'] . ' ' . $cleverUser['data']['name']['last'] . ' | eMail: ' . $cleverUser['data']['email'] . '. Usually indicates a duplicate User record. One is missing the email.');
     }
 }

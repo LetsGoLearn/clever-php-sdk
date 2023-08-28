@@ -9,6 +9,8 @@ use LGL\Clever\Commands\CleverSyncBySections;
 use LGL\Clever\Commands\SectionSync;
 use LGL\Clever\Commands\SiteSync;
 use LGL\Clever\Commands\UserSync;
+use LGL\Clever\Commands\CleanCleverAccount;
+use LGL\Clever\Commands\CleverUserCleaner;
 
 
 
@@ -43,7 +45,9 @@ class CleverServiceProvider extends ServiceProvider
             CleverSyncBySections::class,
             SiteSync::class,
             SectionSync::class,
-            UserSync::class
+            UserSync::class,
+            CleanCleverAccount::class,
+            CleverUserCleaner::class
         ]);
     }
 }
