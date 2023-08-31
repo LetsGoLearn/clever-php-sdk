@@ -63,7 +63,7 @@ class CleverSync extends Command
     protected array $teachers = [];
     protected array $students = [];
     protected $preferences;
-    protected $limit;
+    protected $limit = 0;
 
 
     /********** New Variables **********/
@@ -80,8 +80,8 @@ class CleverSync extends Command
      * @var string
      */
     protected $signature = 'clever:sync 
-        {clientId : The client ID to begin syncing} 
-        {--debug : reset to the event id we had stored } 
+        {clientId : The client ID to begin syncing}
+        {--reset : reset to the event id we had stored}
         {--limit=10000 :  limit how many records we will get in this run from clever} 
         {--schoolslimit=10000 : limit how many clever schools we will process under this client}';
 
@@ -119,28 +119,27 @@ class CleverSync extends Command
         $this->syncDistrictInformation();
         $this->info('  ! District Information Should Have Synced');
 
+
         $this->syncAdminsInformation();
         $this->info('  ! Admins Information Should Have Synced');
+
 
         $this->syncSitesInformation();
         $this->info('  ! Sites Information Should Have Synced');
 
         $this->syncPrincipalsInformation();
         $this->info('  ! Principals Information Should Have Synced');
-//        dd('Principals Information Should Have Synced');
 
         $this->syncTeachersInformation();
         $this->info('  ! Teachers Information Should Have Synced');
-//        dd('Teachers Information Should Have Synced');
 
         $this->syncStudentsInformation();
         $this->info('  ! Students Information Should Have Synced');
-//        dd('Students Information Should Have Synced');
 
-        $this->syncSectionsInformation();
-        $this->info('  ! Sections Information Should Have Synced');
-//        dd('Sections Information Should Have Synced');
-
+        if ($this->option('sections') || $this->option('all')) {
+            $this->syncSectionsInformation();
+            $this->info('  ! Sections Information Should Have Synced');
+        }
 
         $this->client->synced_on = Carbon::now()->toDateTimeString();
         $this->client->save();
@@ -175,7 +174,6 @@ class CleverSync extends Command
 
 
     /************   || Sync District Information ||   ************/
-    // ToDo: Check title for a match and update / add Clever Id.
     public function syncDistrictInformation(): void
     {
         $this->output->note('Syncing District Information...');
@@ -199,6 +197,7 @@ class CleverSync extends Command
             'partner_id' => 1,
             'last_event' => $cleverDistrictData->getEvents(['limit' => '1', 'ending_before' => 'last'])[0]->data['id'],
             'clever_data' => $cleverDistrictData->data['data'],
+            'created_by' => 'Clever Process - Client Sync - CLI',
         ];
 
         $this->district->title = $cleverDistrictData->data['data']['name'];
@@ -298,14 +297,19 @@ class CleverSync extends Command
 
     private function processAdmin(array $cleverUser): void
     {
-        $user = $this->processCleverUserData($cleverUser); // Assuming this method exists and returns a User object
+        $user = $this->processCleverUserData($cleverUser);
+        // ToDO: Ask @ryan tomorrow about this, I don't want to fuck it up.
+        $cleverUser['data']['name']['first'] = str_replace('é', 'e', $cleverUser['data']['name']['first']);
+        $user->save();
+        $user->setMetadata(['clever_id' => $cleverUser['data']['id'], 'clever_information' => $cleverUser['data']]);
+
         $user->update([
             'first_name' => $cleverUser['data']['name']['first'],
             'last_name' => $cleverUser['data']['name']['last'],
             'email' => $cleverUser['data']['email'],
         ]);
 
-        $user->setMetadata(['clever_id' => $cleverUser['data']['id'], 'clever_information' => $cleverUser['data']]);
+
         $user->roles()->syncWithoutDetaching([2]); // Detaches old roles and attaches new ones
 
         $this->progressBar->advance();
@@ -344,13 +348,15 @@ class CleverSync extends Command
         $site->address_id = $address;
         $site->save();
 
-        $metaInformation = $this->coreData($school, 'site', 1);
-        $metaInformation['high_grade'] = $highGrade->id ?? null;
-        $metaInformation['low_grade'] = $lowGrade->id ?? null;
-        $metaInformation['clever_id'] = $school->data['id'];
-        $metaInformation['clever_information'] = $school->data;
+        $metadata = $this->coreData($school, 'site', 1);
+        $metadata['high_grade'] = $highGrade->id ?? null;
+        $metadata['low_grade'] = $lowGrade->id ?? null;
+        $metadata['clever_id'] = $school->data['id'];
+        $metadata['clever_information'] = $school->data;
+        
 
-        $site->setMetadata($metaInformation);
+
+        $site->setMetadata($metadata);
 
         $this->schools[$school->data['id']] = $site->id;
     }
@@ -432,6 +438,7 @@ class CleverSync extends Command
         return [
             'staff_id' => $cleverUser['data']['staff_id'],
             'clever_id' => $cleverUser['data']['id'],
+            'created_by' => 'Clever Process - Client Sync - CLI',
             'clever_information' => $cleverUser['data']['id']
         ];
     }
@@ -499,7 +506,7 @@ class CleverSync extends Command
         $cleverUserArray['data'] = $cleverUser->data;
         $user = $this->processCleverUserData($cleverUserArray);
         $data = $this->coreData($cleverUser, 'teacher', 1);
-        $data['created by'] = 'Clever Process';
+        $data['created_by'] = 'Clever Process - Client Sync - CLI';
         $data['clever_information'] = $cleverUserArray['data'];
 
         $this->updateTeacherDetails($user, $data);
@@ -582,7 +589,6 @@ class CleverSync extends Command
     {
         $district = $this->clever->district($this->districtId);
         $sections = $district->getSections(['limit' => $this->limit]);
-
         if (count($sections) >= 1 && $sections[0]->id !== null) {
             $this->output->note('Processing ' . count($sections) . ' sections...');
             $bar = $this->output->createProgressBar(count($sections));
@@ -604,9 +610,6 @@ class CleverSync extends Command
     private function processSection($section)
     {
         $data = $this->coreData($section, 'section', 1);
-        if (empty($data['teachers']) || empty($data['teacher']) || empty($this->teachers[$data['teacher']])) {
-            return;
-        }
 
         $roster = $this->findOrCreateRoster($section);
 
@@ -622,23 +625,20 @@ class CleverSync extends Command
         $startDate = (isset($section->data['start_date'])) ? new Carbon($section->data['start_date']) : null;
         $endDate = (isset($section->data['end_date'])) ? new Carbon($section->data['end_date']) : null;
 
-        if ($this->cleverIdExists($section->data['id'], Metadata::$metableClasses['rosters'])) {
-            $roster = Roster::where('client_id', $this->client->id)
-                ->with(['metadata' => function ($q) use ($section) {
-                    $q->ofCleverId($section->data['id']);
-                }])
-                ->first();
-        }
-
+        $roster = Roster::where('client_id', $this->client->id)
+            ->with(['metadata' => function ($q) use ($section) {
+                $q->ofCleverId($section->data['id']);
+            }])
+            ->get();
         if ($roster === null) {
             $roster = new Roster();
-            $roster->type_id   = 1;
+            $roster->type_id = 1;
 
 
             // Pulls Teacher ID from an Array of Teachers collected
             $roster->user_id = $this->teachers[$section->data['teacher']];
             // Pulls Site ID from an Array of Sites collected
-            $roster->site_id   = $this->schools[$section->data['school']];
+            $roster->site_id = $this->schools[$section->data['school']];
             $roster->client_id = $this->client->id;
             $roster->writeable = false;
 
@@ -648,7 +648,6 @@ class CleverSync extends Command
 
 
             $rosterTitle = $section->data['name'];
-            $rosterTitle = ($startDate !== null) ? $rosterTitle . ' (' . $startDate->format('Y-m-d') . ')' : $rosterTitle;
             $rosterTitle = $rosterTitle . ' (Clever)';
 
 
@@ -656,13 +655,15 @@ class CleverSync extends Command
             $roster->description = "";
 
             $roster->save();
+
             $roster->setMetadata($this->buildRosterMetadata($section));
         }
 
         return $roster;
     }
 
-    public function buildRosterMetadata($section) {
+    public function buildRosterMetadata($section)
+    {
         // Clever Data Start Dates
 
         $subject = (isset($section->data['subject'])) ? $this->checkSubject($section->data['subject']) : null;
@@ -670,18 +671,19 @@ class CleverSync extends Command
         $course = (isset($section->data['course']) && isset($section->data['number'])) ? $this->checkCourse($section->data['name'], $section->data['number']) : null;
 
 
-        $metadata        = [
+        $metadata = [
             'subject_id' => $subject->id ?? null,
-            'course_id'  => $course->id ?? null,
-            'period_id'  => $period->id ?? null,
-            'sis_id'     => $section->data['sis_id'] ?? null,
-            'clever_id'  => $section->data['id'] ?? null,
-            'created by' => 'clever',
+            'course_id' => $course->id ?? null,
+            'period_id' => $period->id ?? null,
+            'sis_id' => $section->data['sis_id'] ?? null,
+            'clever_id' => $section->data['id'] ?? null,
+            'created_by' => 'Clever Process - Client Sync - CLI',
             'clever_data' => $section->data,
         ];
 
         return $metadata;
     }
+
     private function syncTeachersToRoster($roster, $teacherCleverIds)
     {
         $teachers = [];
@@ -947,6 +949,7 @@ class CleverSync extends Command
             if (is_null($user->metadata)) {
                 throw new Exception('Clever ID exists, but no metadata found due to empty email. ID: ' . $cleverUser['data']['id'] . ' Name: ' . $cleverUser['data']['name']['first'] . ' ' . $cleverUser['data']['name']['last'] . ' | eMail: ' . $cleverUser['data']['email'] . '. Usually indicates a duplicate User record. One is missing the email.');
             }
+            // What Scenario is this?
             if ($user->metadata->exists() && isset($user->metadata->data['clever_id'])) {
                 ($user->metadata->exists()) ? $this->checkCleverIdMatch($cleverUser['data']['id'], $user->metadata->data['clever_id']) : null;
             }
@@ -954,18 +957,29 @@ class CleverSync extends Command
         } else {
             $user = new EloquentUser();
             $user->username = strtolower($this->getUsername($cleverUser));
-            $user->email = $cleverUser['data']['email'];
-            /* @noinspection PhpUndefinedMethodInspection */
+            $user->email = ($cleverUser['data']['email'] ?? null);
             $user->password = Hash::make($this->getPassword($cleverUser));
             $user->client_id = $this->client->id;
-        }
-        if (!is_null($user)) {
             $user->first_name = $cleverUser['data']['name']['first'];
             $user->last_name = $cleverUser['data']['name']['last'];
             $user->email = ($cleverUser['data']['email'] ?? null);
-            return $user;
+            $user->save();
+        }
+        if (!is_null($user)) {
 
+            $user->first_name = $cleverUser['data']['name']['first'];
+            $user->last_name = $cleverUser['data']['name']['last'];
+            $user->email = ($cleverUser['data']['email'] ?? null);
+            $user->save();
+            return $user;
+        }
+        else {
+            dd('not sure what happened'. $cleverUser['data']['id'] . ' Name: ' . $cleverUser['data']['name']['first'] . ' ' . $cleverUser['data']['name']['last'] . ' | eMail: ' . $cleverUser['data']['email'] . '. Usually indicates a duplicate User record. One is missing the email.');
         }
         throw new CleverNullUser('Clever ID exists, but no user found/null. ID: ' . $cleverUser['data']['id'] . ' Name: ' . $cleverUser['data']['name']['first'] . ' ' . $cleverUser['data']['name']['last'] . ' | eMail: ' . $cleverUser['data']['email'] . '. Usually indicates a duplicate User record. One is missing the email.');
+    }
+
+    public function rest() {
+        dd('Should reset Last Event ID');
     }
 }

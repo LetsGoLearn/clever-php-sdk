@@ -12,8 +12,16 @@ use Carbon\Carbon;
 class CleverUserCleaner extends Command
 {
     protected Api $clever;
-    protected int $lostAccess = 0;
+    protected array $lostAccess = [
+        'student' => 0,
+        'teacher' => 0,
+        'principal' => 0,
+        'client' => 0
+    ];
+
     protected int $otherError = 0;
+
+    protected $logFile;
 
     protected Client $client;
     /**
@@ -21,7 +29,7 @@ class CleverUserCleaner extends Command
      *
      * @var string
      */
-    protected $signature = 'clever:fixer {clientId}';
+    protected $signature = 'clever:users:fixer {clientId}';
 
     /**
      * The console command description.
@@ -55,9 +63,24 @@ class CleverUserCleaner extends Command
             $this->processUsers($users, $clever, $role);
         }
 
+        $this->info('+-- Finished Processing users --+');
+        $this->table(['Type', 'Count'], [
+            ['Lost Access', $this->lostAccess['student'] + $this->lostAccess['teacher'] + $this->lostAccess['principal']],
+            ['Other Errors', $this->otherError],
+        ]);
+        $this->newLine(2);
+
+        $this->info('+-- Totals Counts --+');
         $this->table(['Type', 'Count'], $counts);
-        $this->warn("Lost Access: {$this->lostAccess}");
-        $this->warn("Other Errors: {$this->otherError}");
+        $this->newLine(2);
+
+        $this->info('+-- Access Removed Counts --+');
+        $this->table(['Type', 'Count'], [
+            ['Students', $this->lostAccess['student']],
+            ['Teachers', $this->lostAccess['teacher']],
+            ['School Admins', $this->lostAccess['principal']],
+            ['District Admins', $this->lostAccess['client']],
+        ]);
         $this->newLine(2);
 
 
@@ -71,7 +94,7 @@ class CleverUserCleaner extends Command
         return EloquentUser::ofClientId($client->id)->ofRole($role)->with('metadata')
             ->whereHas('metadata', function ($query) {
                 $query->whereNotNull('data->clever_id');
-            })->limit(100)->get();
+            })->get();
     }
 
     // Helper function to process users.
@@ -81,30 +104,17 @@ class CleverUserCleaner extends Command
 
         // Open log file for writing
 
-        $logFile = fopen(storage_path("logs/{$this->client->id}_{$role}_processing.".Carbon::now()->toDateString()."_".Carbon::now()->toTimeString().".log"), 'a');
+        $this->logFile = fopen(storage_path("logs/{$this->client->id}_{$role}_processing.".Carbon::now()->toDateString()."_".Carbon::now()->toTimeString().".log"), 'a');
 
         foreach ($users as $user) {
-            // Your existing processing logic here
 
-            $action = $this->processCleverId($user, $clever, $role);
-
-            // Log the processed user info
-            $logData = [
-                'cleverId' => $user->metadata->data['clever_id'] ?? 'N/A',
-                'lglId' => $user->id ?? 'N/A',
-                'role' => $role,
-                'email' => $user->email ?? 'N/A',
-                'action' => $action,
-            ];
-
-            // Write to the log file
-            fwrite($logFile, json_encode($logData) . PHP_EOL);
+            $this->processCleverId($user, $clever, $role);
 
             $bar->advance();
         }
 
         // Close log file
-        fclose($logFile);
+        fclose($this->logFile);
 
         $bar->finish();
         $this->newLine(2);
@@ -117,21 +127,35 @@ class CleverUserCleaner extends Command
         // We have an Error
         if (isset($return->data['error'])) {
             // We no longer have access, remove Clever ID from metadata
+            $cleverId = $entity->metadata->data['clever_id'];
             if ($return->data['error'] == 'Resource not found') {
                 $data = $entity->metadata->data;
                 $data['error_clever_id'] = $data['clever_id'];
                 unset($data['clever_id']);
-                $entity->setMetadata($data);
-                $entity->save();
-                $this->lostAccess++;
-                return 'Lost Access';
+                $metadata = $entity->metadata;
+                $metadata->data = $data;
+                $metadata->save();
+                $this->lostAccess[$type]++;
+                $logData = [
+                    'cleverIdError' => $cleverId,
+                    'lglId' => $entity->id,
+                    'role' => $type,
+                    'email' => $entity->email
+                ];
+                fwrite($this->logFile, json_encode($logData) . PHP_EOL);
             }
             else {
-                $this->otherError++;
-                return 'Not sure what happened...';
-            }
+                $logData = [
+                    'cleverIdError' => $cleverId,
+                    'lglId' => $entity->id,
+                    'role' => $type,
+                    'email' => $entity->email
+                ];
 
+                $this->otherError++;
+                fwrite($this->logFile, json_encode($logData) . PHP_EOL);
+            }
         }
-        return 'Nothing to do...';
+        return $this;
     }
 }

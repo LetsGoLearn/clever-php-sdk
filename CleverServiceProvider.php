@@ -11,6 +11,8 @@ use LGL\Clever\Commands\SiteSync;
 use LGL\Clever\Commands\UserSync;
 use LGL\Clever\Commands\CleanCleverAccount;
 use LGL\Clever\Commands\CleverUserCleaner;
+use LGL\Clever\Commands\CleverRosterCleaner;
+use LGL\Clever\Commands\CleverIdCleaner;
 
 
 
@@ -47,7 +49,9 @@ class CleverServiceProvider extends ServiceProvider
             SectionSync::class,
             UserSync::class,
             CleanCleverAccount::class,
-            CleverUserCleaner::class
+            CleverUserCleaner::class,
+            CleverRosterCleaner::class,
+            CleverIdCleaner::class,
         ]);
     }
 }
