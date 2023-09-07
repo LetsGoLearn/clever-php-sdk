@@ -113,7 +113,6 @@ class UserSync extends Command
                 $type = $this->type;
                 $cleverInfo = $this->clever->$type($this->cleverId);
                 if(isset($cleverInfo->data['error'])) {
-                    dd('I think we remove the clever_id from the user.');
                     $this->warn('Clever Id: '.$this->cleverId.' is no longer in clever. Removing...');
                     $metadata->data['clever_id'] = false;
                     $metadata->data['clever_id_removed'] = $this->cleverId;
@@ -158,10 +157,7 @@ class UserSync extends Command
             } else {
                 dd($cleverPull,'here', $this->cleverId);
                 $this->warn('Discconect Clever Id: '.$this->cleverId.' from user '.$this->user->id.'.');
-//                 $user = EloquentUser::withTrashed()->find($this->metadata->data['metable_id']);
-//                 $user->delete();
-//                 $this->error('Closed Account User not available from clever '.$this->cleverId);
-//                 $this->sendNotification('Closed Account User not available from clever '.$this->cleverId);
+
             }
             $this->warn('Done updating user '.$this->user->id.'.');
             $this->warn("Remove rosters the user shouldn't be in anymore");

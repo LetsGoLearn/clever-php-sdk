@@ -48,11 +48,11 @@ class CleverLookupController extends Controller
         $isUser = false;
         if ($type === 'student' || $type === 'teacher') {
             $isUser = true;
-            $entityObject = EloquentUser::find($lglId);
+            $entityObject = EloquentUser::withTrashed()->find($lglId);
         } elseif ($type === 'roster') {
-            $entityObject = Roster::find($lglId);
+            $entityObject = Roster::withTrashed()->find($lglId);
         } elseif ($type === 'site') {
-            $entityObject = Site::find($lglId);
+            $entityObject = Site::withTrashed()->find($lglId);
         }
 
         if (!is_null($entityObject)) {
@@ -94,11 +94,11 @@ class CleverLookupController extends Controller
 
         if (!is_null($metadata)) {
             if ($type === 'student' || $type === 'teacher') {
-                $entityObject = EloquentUser::with('metadata')->find($metadata->metable_id);
+                $entityObject = EloquentUser::withTrashed()->with('metadata')->find($metadata->metable_id);
             } elseif ($type === 'roster') {
-                $entityObject = Roster::with('metadata')->find($metadata->metable_id);
+                $entityObject = Roster::withTrashed()->with('metadata')->find($metadata->metable_id);
             } elseif ($type === 'site') {
-                $entityObject = Site::with('metadata')->find($metadata->metable_id);
+                $entityObject = Site::withTrashed()->with('metadata')->find($metadata->metable_id);
             }
         }
 
@@ -151,11 +151,11 @@ class CleverLookupController extends Controller
         $entityObject = null;
 
         if ($type === 'student' || $type === 'teacher') {
-            $entityObject = EloquentUser::with('metadata')->find($entityId);
+            $entityObject = EloquentUser::withTrashed()->with('metadata')->find($entityId);
         } elseif ($type === 'section') {
-            $entityObject = Roster::with('metadata')->find($entityId);
+            $entityObject = Roster::withTrashed()->with('metadata')->find($entityId);
         } elseif ($type === 'site') {
-            $entityObject = Site::with('metadata')->find($entityId);
+            $entityObject = Site::withTrashed()->with('metadata')->find($entityId);
         }
 
         if ($entityObject) {

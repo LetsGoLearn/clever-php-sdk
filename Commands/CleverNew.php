@@ -531,7 +531,7 @@ class CleverNew extends Command
         }
         $this->info('Done');
         /* @noinspection PhpUndefinedMethodInspection */
-        Redis::connection('logs')->set($this->redisKey, json_encode((object) $this->errorLog));
+        Redis::connection('logging')->set($this->redisKey, json_encode((object) $this->errorLog));
     }
 
     /**

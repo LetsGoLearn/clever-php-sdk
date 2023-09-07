@@ -197,9 +197,9 @@ class CleverIdDupe extends Command
     private function recordLog()
     {
         /* @noinspection PhpUndefinedMethodInspection */
-        Redis::connection('logs')->set($this->redisKey, json_encode((object) $this->log));
+        Redis::connection('logging')->set($this->redisKey, json_encode((object) $this->log));
         /* @noinspection PhpUndefinedMethodInspection */
-        Redis::connection('logs')->expireat($this->redisKey, strtotime('+30 days'));
+        Redis::connection('logging')->expireat($this->redisKey, strtotime('+30 days'));
     }
 
 

@@ -615,7 +615,7 @@ class CleverEvents extends Command
     private function getLog()
     {
         /* @noinspection PhpUndefinedMethodInspection */
-        $redisLog = Redis::connection('logs')->get($this->redisKey);
+        $redisLog = Redis::connection('logging')->get($this->redisKey);
         $log      = ($redisLog) ? json_decode($redisLog, true) : [];
 
         // Build variables to work with
@@ -630,9 +630,9 @@ class CleverEvents extends Command
     private function setLog()
     {
         /* @noinspection PhpUndefinedMethodInspection */
-        Redis::connection('logs')->set($this->redisKey, json_encode((object) $this->log));
+        Redis::connection('logging')->set($this->redisKey, json_encode((object) $this->log));
         /* @noinspection PhpUndefinedMethodInspection */
-        Redis::connection('logs')->expireat($this->redisKey, strtotime('+7 days'));
+        Redis::connection('logging')->expireat($this->redisKey, strtotime('+7 days'));
     }
 
     private function writeRecord($functionName, $action, $eventData, $processed = true, $exception = null)
