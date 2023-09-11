@@ -1,25 +1,26 @@
 <?php
 
-namespace LGL\Clever\Commands;
+namespace LGL\Clever\Commands\old;
 
+use Carbon\Carbon;
+use Exception;
+use Illuminate\Console\Command;
+use Illuminate\Support\Facades\Redis;
+use LGL\Clever\Api;
+use LGL\Clever\Commands\MultilineProgressBar;
+use LGL\Core\Accounts\Models\Client as Clients;
+use LGL\Core\Clever\Models\CleverEvents as CleverEventsModel;
 use LGL\Core\Imports\ImportMerge;
 use LGL\Core\Imports\Traits\ProcessRoster;
 use LGL\Core\Imports\Traits\ProcessSite;
-use LGL\Core\Metadata\MetableTrait;
-use Illuminate\Console\Command;
 use LGL\Core\Imports\Traits\ProcessUser;
-use LGL\Core\Models\Metadata;
-use LGL\Core\Traits\AddressTrait;
-use LGL\Core\Accounts\Models\Client as Clients;
-use LGL\Core\Models\District;
-use LGL\Clever\Api;
-use Log;
-use Carbon\Carbon;
-use Exception;
-use LGL\Core\Tools\Messaging;
-use LGL\Core\Clever\Models\CleverEvents as CleverEventsModel;
-use Illuminate\Support\Facades\Redis;
+use LGL\Core\Metadata\MetableTrait;
 use LGL\Core\Models\Course;
+use LGL\Core\Models\District;
+use LGL\Core\Models\Metadata;
+use LGL\Core\Tools\Messaging;
+use LGL\Core\Traits\AddressTrait;
+use Log;
 
 class CleverEvents extends Command
 {

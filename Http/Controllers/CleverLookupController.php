@@ -28,16 +28,19 @@ class CleverLookupController extends Controller
         ]);
     }
 
-    public function runSync(Request $request, $clientId, $type, $cleverId)
-    {
 
-        Artisan::queue('clever:userSync', [
-            'clientId' => $clientId,
-            'type'     => $type,
-            'cleverId' => $cleverId
-        ]);
-        return back()->with('success', 'Started user sync');
-    }
+//    Removed this method because the command has been removed. Have to put file back
+
+//    public function runSync(Request $request, $clientId, $type, $cleverId)
+//    {
+//
+//        Artisan::queue('clever:userSync', [
+//            'clientId' => $clientId,
+//            'type'     => $type,
+//            'cleverId' => $cleverId
+//        ]);
+//        return back()->with('success', 'Started user sync');
+//    }
 
     public function getSearchEntity(Request $request, $client, $type, $id)
     {

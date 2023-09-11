@@ -34,7 +34,7 @@ class CleverRosterCleaner extends Command
      *
      * @var string
      */
-    protected $description = '';
+    protected $description = 'Cleans up Clever Rosters. Removes rosters that we no longer have access to. This command is still in use as of 2023-09-09.';
 
     /**
      * Execute the console command.
@@ -102,8 +102,7 @@ class CleverRosterCleaner extends Command
     }
 
     public function getLglDistrict() {
-        $district = District::where('client_id', $this->client->id)->with('metadata')->first();
-        return $district;
+        return District::where('client_id', $this->client->id)->with('metadata')->first();
     }
 
     public function processRoster($entity)

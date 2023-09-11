@@ -20,7 +20,7 @@ class CleverIdCleaner extends Command
      *
      * @var string
      */
-    protected $description = 'This works with duplicate Clever IDs for Rosters Only';
+    protected $description = 'This works with duplicate Clever IDs for Rosters Only as of 2023-09-09.';
 
     /**
      * Execute the console command.

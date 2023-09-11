@@ -36,7 +36,8 @@ class CleverUserCleaner extends Command
      *
      * @var string
      */
-    protected $description = '';
+    protected $description = 'This clever command will remove Clever IDs from users who no longer have access to Clever.'
+                           . ' It will also log any other errors that occur. This command is still in use as of 2023-09-09.';
 
     /**
      * Execute the console command.

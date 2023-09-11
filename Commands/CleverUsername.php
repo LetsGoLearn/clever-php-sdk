@@ -21,7 +21,8 @@ class CleverUsername extends Command
      *
      * @var string
      */
-    protected $description = 'Fix student usernames based on setting in the client.';
+    protected $description = 'Change a Clever usernames to match the given pattern defined in the client preferences.'
+                            .'This command is valid as of 2023-09-09.';
 
     protected $preferences;
 

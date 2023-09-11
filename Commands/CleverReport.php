@@ -6,7 +6,7 @@ use Illuminate\Console\Command;
 use LGL\Auth\Users\EloquentUser;
 use LGL\Core\Models\Metadata;
 
-class Scrub extends Command
+class CleverReport extends Command
 {
 
     protected $clientId;
@@ -16,14 +16,14 @@ class Scrub extends Command
      *
      * @var string
      */
-    protected $signature = 'clever:scrub {clientId} {--health}';
+    protected $signature = 'clever:report {clientId} {--health}';
 
     /**
      * The console command description.
      *
      * @var string
      */
-    protected $description = 'Provides a report of potential data issues in the Clever database.';
+    protected $description = 'Provides a report of potential data issues in the Clever database. Still in development as of 2023-09-09.';
 
     /**
      * Create a new command instance.

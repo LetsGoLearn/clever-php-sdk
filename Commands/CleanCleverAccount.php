@@ -42,7 +42,7 @@ class CleanCleverAccount extends Command
      *
      * @var string
      */
-    protected $description = 'Clean up Clever account. Remove or archive objects no longer present in Clever.';
+    protected $description = 'Clean up Clever account. Remove or archive objects no longer present in Clever. (Not in working order...)';
 
     /**
      * Create a new command instance.
@@ -61,26 +61,22 @@ class CleanCleverAccount extends Command
      */
     public function handle()
     {
-
-
         $this->info('Starting Clever account cleanup...');
         $this->client = Client::find($this->argument('clientId'));
         $this->clever = new Api($this->client->metadata->data['api_secret']);
 
         // Fetch all Clever IDs for each object type
-        $this->fetchCleverIds('districts');
-        $this->fetchCleverIds('school');
-        $this->fetchCleverIds('section');
-        $this->fetchCleverIds('teacher');
-        $this->fetchCleverIds('student');
-        $this->fetchCleverIds('school_admin');
-        $this->fetchCleverIds('district_admin');
+        $districts = $this->fetchCleverIds('districts');
+        $sites = $this->fetchCleverIds('school');
+        $section = $this->fetchCleverIds('section');
+        $teachers = $this->fetchCleverIds('teacher');
+        $students = $this->fetchCleverIds('student');
+        $schoolAdmin = $this->fetchCleverIds('school_admin');
+        $districtAdmins = $this->fetchCleverIds('district_admin');
 
 
         //SchoolAdmin
-        dd($this->cleverIds);
-//        $cleverRosterIds = $this->fetchCleverIds('section');
-//        $cleverUserIds = $this->fetchCleverIds('user');
+
 
         // Clean each object type
 //        $this->cleanObjects(District::class, $cleverDistrictIds);
@@ -123,7 +119,7 @@ class CleanCleverAccount extends Command
 
         if ($roleColumn) {
             // If there's a role column, filter the query by it
-            $query->where($roleColumn, 'principal')
+            $query->of($roleColumn, 'principal')
                 ->orWhere($roleColumn, 'teacher')
                 ->orWhere($roleColumn, 'student');
         }

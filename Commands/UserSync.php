@@ -120,8 +120,6 @@ class UserSync extends Command
                 }
             }
 
-
-
             if ($this->type === 'teacher') {
                 $siteLinkNumber   = 2;
                 $rosterLinkNumber = 5;
