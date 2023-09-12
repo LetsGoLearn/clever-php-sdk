@@ -10,6 +10,7 @@ use LGL\Clever\Commands\CleverRosterCleaner;
 use LGL\Clever\Commands\CleverSync;
 use LGL\Clever\Commands\CleverUserCleaner;
 use LGL\Clever\Commands\CleverUsername;
+use LGL\Clever\Commands\UserSync;
 
 
 class CleverServiceProvider extends ServiceProvider
@@ -43,7 +44,7 @@ class CleverServiceProvider extends ServiceProvider
             CleverRosterCleaner::class,
             CleverReport::class,
             CleverSync::class,
-
+            UserSync::class,
             CleverUserCleaner::class,
             CleverUsername::class
         ]);
