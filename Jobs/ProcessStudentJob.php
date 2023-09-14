@@ -16,6 +16,8 @@ class ProcessStudentJob implements ShouldQueue
 {
     use Dispatchable, InteractsWithQueue, Queueable, SerializesModels, ProcessCleverUserTrait;
 
+    public $queue = 'clever_full_sync';
+
     protected $cleverUser;
     protected $client;
 

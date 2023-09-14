@@ -18,7 +18,7 @@ class ProcessPrincipalJob implements ShouldQueue
     protected $cleverUser;
     protected $client;
     protected $schools;
-
+    public $queue = 'clever_full_sync';
 
     public function __construct($cleverUser, $clientId, $schoolIds)
     {
