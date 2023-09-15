@@ -18,10 +18,10 @@ class ProcessPrincipalJob implements ShouldQueue
     protected $cleverUser;
     protected $client;
     protected $schools;
-    public $queue = 'clever_full_sync';
 
     public function __construct($cleverUser, $clientId, $schoolIds)
     {
+        $this->onQueue('clever_full_sync');
         $collection = collect([]);
         $collection->data = $cleverUser;
         $collection->id = $cleverUser['id'];

@@ -14,7 +14,6 @@ class ProcessTeacherJob implements ShouldQueue
 {
     use Dispatchable, InteractsWithQueue, Queueable, SerializesModels, ProcessCleverUserTrait;
 
-    public $queue = 'clever_full_sync';
     protected $cleverUser;
     protected $client;
     protected $schools;
@@ -22,6 +21,7 @@ class ProcessTeacherJob implements ShouldQueue
 
     public function __construct($cleverUser, $clientId, $schoolIds)
     {
+        $this->onQueue('clever_full_sync');
         $collection = collect([]);
         $collection->data = $cleverUser;
         $collection->id = $cleverUser['id'];

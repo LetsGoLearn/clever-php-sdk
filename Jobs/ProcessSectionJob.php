@@ -24,10 +24,10 @@ class ProcessSectionJob implements ShouldQueue
     protected $cleverSection;
     protected $client;
     protected $schools;
-    public $queue = 'clever_full_sync';
 
     public function __construct($cleverSection, $clientId, $schoolIds)
     {
+        $this->onQueue('clever_full_sync');
         $collection = collect([]);
         $collection->data = $cleverSection;
         $collection->id = $cleverSection['id'];
