@@ -112,7 +112,7 @@ class SSO
     {
         // Redis stored bearer token or get another one
         $key = 'clever:sso:code:'.$code;
-        $redis = Redis::connection('clever')->get($key);
+        $redis = Redis::get($key);
         if ($redis) {
             $this->_auth['bearer_token'] = $redis;
             return true;
