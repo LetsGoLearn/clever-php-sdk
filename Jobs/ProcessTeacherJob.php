@@ -52,3 +52,9 @@ class ProcessTeacherJob implements ShouldQueue
         $user->roles()->syncWithoutDetaching([3]);
     }
 }
+
+// php artisan clever:sync 2309 -vvv; php artisan clever:sync 709 -vvv, php artisan clever:sync 701 -vvv; php artisan clever:sync 2279 -vvv; php artisan clever:sync 703 -vvv
+//
+//
+//
+// php artisan clever:sync 703 -vvv

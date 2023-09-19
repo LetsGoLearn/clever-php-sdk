@@ -124,3 +124,30 @@ class CleverRosterCleaner extends Command
         return 'Nothing to do...';
     }
 }
+
+
+//php artisan clever:roster:fixer 3015 -vvv;
+//php artisan clever:roster:fixer 1036 -vvv;
+//php artisan clever:roster:fixer 1555 -vvv;
+//php artisan clever:roster:fixer 2881 -vvv;
+//php artisan clever:roster:fixer 2087 -vvv;
+//php artisan clever:roster:fixer 1422 -vvv;
+//php artisan clever:roster:fixer 2214 -vvv;
+//php artisan clever:roster:fixer 2309 -vvv;
+//php artisan clever:roster:fixer 709 -vvv;
+//php artisan clever:roster:fixer 701 -vvv;
+//php artisan clever:roster:fixer 2279 -vvv;
+//php artisan clever:roster:fixer 703 -vvv;
+//
+//php artisan clever:users:fixer 3015 -vvv;
+//php artisan clever:users:fixer 1036 -vvv;
+//php artisan clever:users:fixer 1555 -vvv;
+//php artisan clever:users:fixer 2881 -vvv;
+//php artisan clever:users:fixer 2087 -vvv;
+//php artisan clever:users:fixer 1422 -vvv;
+//php artisan clever:users:fixer 2214 -vvv;
+//php artisan clever:users:fixer 2309 -vvv;
+//php artisan clever:users:fixer 709 -vvv;
+//php artisan clever:users:fixer 701 -vvv;
+//php artisan clever:users:fixer 2279 -vvv;
+//php artisan clever:users:fixer 703 -vvv;

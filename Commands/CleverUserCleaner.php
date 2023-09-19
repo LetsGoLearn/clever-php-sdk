@@ -121,6 +121,9 @@ class CleverUserCleaner extends Command
         $this->newLine(2);
     }
 
+    // $entity is an object of a user type (EloquentUser)
+    // $clever is an instance of the Clever API class
+    // $type is the role of the user (student, teacher, principal, client)
     public function processCleverId($entity, $clever, $type) {
         // Check if Clever ID is valid & Available
         $return = $clever->{$type}($entity->metadata->data['clever_id']);
