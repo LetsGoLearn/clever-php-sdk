@@ -45,7 +45,6 @@ class AccessCheckStudentJob implements ShouldQueue
 
     private function updateUserDetails(EloquentUser $user, $metadata)
     {
-
         $user->first_name = $this->cleverUser->data['name']['first'];
         $user->last_name = $this->cleverUser->data['name']['last'];
         $user->email = $this->cleverUser->data['email'];
