@@ -275,7 +275,7 @@ class CleverSync extends Command
 
     private function processAdmin(array $cleverUser): void
     {
-        $user = $this->processCleverUserData($cleverUser);
+        $user = $this->processCleverUserData($cleverUser, 'admin');
         // ToDO: Ask @ryan tomorrow about this, I don't want to fuck it up.
         $cleverUser['data']['name']['first'] = str_replace('é', 'e', $cleverUser['data']['name']['first']);
         $user->save();
@@ -523,7 +523,7 @@ class CleverSync extends Command
 
 
 
-    public function rest()
+    public function reset()
     {
         dd('Should reset Last Event ID');
     }

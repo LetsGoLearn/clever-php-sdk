@@ -51,7 +51,7 @@ class ProcessStudentJob implements ShouldQueue
         $cleverUserArray['data'] = $this->cleverUser->data;
         $cleverUserArray['data']['foreign_id'] = $data['foreign_id'];
 
-        $user = $this->processCleverUserData($cleverUserArray);
+        $user = $this->processCleverUserData($cleverUserArray, 'student');
         $this->updateStudentDetails($user, $data);
 
         $attachToSchools = $this->getSchoolsToAttach($cleverUserArray['data']['schools']);

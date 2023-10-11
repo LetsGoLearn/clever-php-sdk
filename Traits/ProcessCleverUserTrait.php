@@ -69,32 +69,44 @@ trait ProcessCleverUserTrait {
         return $return;
     }
 
-    public function processCleverUserData($cleverUser): EloquentUser
+    public function processCleverUserData($cleverUser, $role): EloquentUser
     {
-
+        $userFound = false;
+        // First see if we have a CleverID in the system.
         if ($this->cleverIdExists($cleverUser['data']['id'], Metadata::$metableClasses['users'])) {
             $metadata = Metadata::ofCleverId($cleverUser['data']['id'])->where('metable_type', Metadata::$metableClasses['users'])->first();
             $user = EloquentUser::withTrashed()->where('id', $metadata->metable_id)->first();
             if (!is_null($metadata) & is_null($user)) {
                 throw new Exception('Clever ID exists in MetaData, but no user found. ID: ' . $cleverUser['data']['id'] . ' Name: ' . $cleverUser['data']['name']['first'] . ' ' . $cleverUser['data']['name']['last'] . ' | eMail: ' . $cleverUser['data']['email'] . '. Metadata Record Present.');
             }
-            if ($user->trashed()) {
-                $user->restore();
-            }
-        } else if ($this->cleverIdExists($cleverUser['data']['id'], Metadata::$metableClasses['users']) && $this->emailExists($cleverUser['data']['email'])) {
-            // Check we have a district matching the clever id?
+            $userFound = true;
+        }
+
+        if ($this->emailExists($cleverUser['data']['email']) && $userFound !== true) {
             $user = EloquentUser::withTrashed()->where('email', $cleverUser['data']['email'])
                 ->where('client_id', $this->client->id)
                 ->with('metadata')->first();
-            if (is_null($user->metadata)) {
-                throw new Exception('Clever ID exists, but no metadata found due to empty email. ID: ' . $cleverUser['data']['id'] . ' Name: ' . $cleverUser['data']['name']['first'] . ' ' . $cleverUser['data']['name']['last'] . ' | eMail: ' . $cleverUser['data']['email'] . '. Usually indicates a duplicate User record. One is missing the email.');
-            }
-            // What Scenario is this?
-            if ($user->metadata->exists() && isset($user->metadata->data['clever_id'])) {
-                ($user->metadata->exists()) ? $this->checkCleverIdMatch($cleverUser['data']['id'], $user->metadata->data['clever_id']) : null;
-            }
-            $this->checkEmailMatch($cleverUser['data']['email'], $user->email);
+        }
+        else {
+            // Lets face it this is dangerous without the user type. We have to add it.
+            // So lets see if we can fix this. Students can be matched by dob as well as first and last name.
+            // Adding role is a safe assumption. So add role for extra safety.
+            $user = EloquentUser::withTrashed()->where('first_name', $cleverUser['data']['name']['first'])
+                ->where('last_name', $cleverUser['data']['name']['last'])
+                ->where('client_id', $this->client->id)
+                ->ofRole($role)
+                ->with('metadata')->first();
+        }
+
+        if (!is_null($user)) {
+            $user->first_name = $cleverUser['data']['name']['first'];
+            $user->last_name = $cleverUser['data']['name']['last'];
+            $user->email = ($cleverUser['data']['email'] ?? null);
+            $user->deleted_at = null;
+            $user->save();
+            return $user;
         } else {
+            // Must be a new user, we found no matches
             $user = new EloquentUser();
             $user->username = strtolower($this->getUsername($cleverUser));
             $user->email = ($cleverUser['data']['email'] ?? null);
@@ -104,17 +116,9 @@ trait ProcessCleverUserTrait {
             $user->last_name = $cleverUser['data']['name']['last'];
             $user->email = ($cleverUser['data']['email'] ?? null);
             $user->save();
-        }
-        if (!is_null($user)) {
-
-            $user->first_name = $cleverUser['data']['name']['first'];
-            $user->last_name = $cleverUser['data']['name']['last'];
-            $user->email = ($cleverUser['data']['email'] ?? null);
-            $user->save();
             return $user;
-        } else {
-            dd('not sure what happened' . $cleverUser['data']['id'] . ' Name: ' . $cleverUser['data']['name']['first'] . ' ' . $cleverUser['data']['name']['last'] . ' | eMail: ' . $cleverUser['data']['email'] . '. Usually indicates a duplicate User record. One is missing the email.');
         }
+
         throw new CleverNullUser('Clever ID exists, but no user found/null. ID: ' . $cleverUser['data']['id'] . ' Name: ' . $cleverUser['data']['name']['first'] . ' ' . $cleverUser['data']['name']['last'] . ' | eMail: ' . $cleverUser['data']['email'] . '. Usually indicates a duplicate User record. One is missing the email.');
     }
 

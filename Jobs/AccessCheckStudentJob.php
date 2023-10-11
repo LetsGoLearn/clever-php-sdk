@@ -36,8 +36,8 @@ class AccessCheckStudentJob implements ShouldQueue
         $this->setPreferneces();
 
         $userDataArray['data'] = $this->cleverUser->data;
-        $user = $this->processCleverUserData($userDataArray);
-        $metadata = $this->getPrincipalMetadata();
+        $user = $this->processCleverUserData($userDataArray, 'student');
+        $metadata = $this->getMetadata();
         $this->updateUserDetails($user, $metadata);
         $attachToSchools = $this->getSchoolsToAttach($this->cleverUser->data['schools']);
         $this->syncUserToSites($user, $attachToSchools);
@@ -53,7 +53,7 @@ class AccessCheckStudentJob implements ShouldQueue
         $user->roles()->syncWithoutDetaching([2]);
     }
 
-    private function getPrincipalMetadata(): array
+    private function getMetadata(): array
     {
         return [
             'staff_id' => $this->cleverUser->data['staff_id'],

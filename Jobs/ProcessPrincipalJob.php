@@ -36,7 +36,7 @@ class ProcessPrincipalJob implements ShouldQueue
         $this->setPreferneces();
 
         $userDataArray['data'] = $this->cleverUser->data;
-        $user = $this->processCleverUserData($userDataArray);
+        $user = $this->processCleverUserData($userDataArray, 'principal');
         $metadata = $this->getPrincipalMetadata();
         $this->updateUserDetails($user, $metadata);
         $attachToSchools = $this->getSchoolsToAttach($this->cleverUser->data['schools']);

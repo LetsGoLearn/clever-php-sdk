@@ -36,11 +36,10 @@ class ProcessTeacherJob implements ShouldQueue
         $this->setPreferneces();
 
         $cleverUserArray['data'] = $this->cleverUser->data;
-        $user = $this->processCleverUserData($cleverUserArray);
+        $user = $this->processCleverUserData($cleverUserArray, 'teacher');
         $data = $this->coreData($this->cleverUser, 'teacher', 1);
         $data['created_by'] = 'Clever Process - Client Sync - CLI';
         $data['clever_information'] = $cleverUserArray['data'];
-
         $this->updateTeacherDetails($user, $data);
         $attachToSchools = $this->getSchoolsToAttach($cleverUserArray['data']['schools']);
         $this->syncUserToSites($user, $attachToSchools);
@@ -52,9 +51,3 @@ class ProcessTeacherJob implements ShouldQueue
         $user->roles()->syncWithoutDetaching([3]);
     }
 }
-
-// php artisan clever:sync 2309 -vvv; php artisan clever:sync 709 -vvv, php artisan clever:sync 701 -vvv; php artisan clever:sync 2279 -vvv; php artisan clever:sync 703 -vvv
-//
-//
-//
-// php artisan clever:sync 703 -vvv

@@ -36,7 +36,7 @@ class AccessCheckTeacherJob implements ShouldQueue
         $this->setPreferneces();
 
         $userDataArray['data'] = $this->cleverUser->data;
-        $user = $this->processCleverUserData($userDataArray);
+        $user = $this->processCleverUserData($userDataArray, 'teacher');
         $metadata = $this->getPrincipalMetadata();
         $this->updateUserDetails($user, $metadata);
         $attachToSchools = $this->getSchoolsToAttach($this->cleverUser->data['schools']);
