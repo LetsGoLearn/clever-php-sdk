@@ -3,6 +3,7 @@
 namespace LGL\Clever\Commands;
 
 use Illuminate\Console\Command;
+use Illuminate\Support\Facades\Log;
 use LGL\Clever\Api;
 use LGL\Core\Accounts\Models\Client;
 use LGL\Core\Models\District;
@@ -45,15 +46,13 @@ class CleverRosterCleaner extends Command
         $startTime = microtime(true);
 
         $this->warn('Starting Clever roster cleanup...');
+        $this->info('Client ID: ' . $this->argument('clientId'));
         $this->client = Client::find($this->argument('clientId'));
         $this->clever = new Api($this->client->metadata->data['api_secret']);
 
         $lglDistrict = $this->getLglDistrict();
         $district = $this->clever->district($lglDistrict->metadata->data['clever_id']);
-        $rosters = $this->getRosters($this->client);
-
-        $logFile = fopen(storage_path("logs/{$this->client->id}_roster_processing.".Carbon::now()->toDateString()."_".Carbon::now()->toTimeString().".log"), 'a');
-
+        $rosters = $this->getRosters();
 
         $bar = $this->output->createProgressBar($rosters->count());
 
@@ -61,32 +60,13 @@ class CleverRosterCleaner extends Command
 
         foreach ($rosters as $roster) {
 
-            $logData = [
-                'roster_id' => $roster->id,
-                'roster_title' => $roster->title,
-                'roster_type' => $roster->type_id,
-                'clever_id' => $roster->metadata->data['clever_id'],
-                'timestamp' => Carbon::now()->toDateTimeString()
-            ];
-
-            $action = $this->processRoster($roster);
-
-            $logData['action'] = $action;
-
-
-            // Write to the log file
-            fwrite($logFile, json_encode($logData) . PHP_EOL);
+            $this->processRoster($roster);
             $bar->advance();
-
         }
 
         $bar->finish();
-        fclose($logFile);
         $this->newLine(1);
 
-        $this->warn("Lost Access: {$this->lostAccess}");
-        $this->warn("Other Errors: {$this->otherError}");
-        $this->newLine(2);
 
 
         $endTime = microtime(true);
@@ -95,7 +75,7 @@ class CleverRosterCleaner extends Command
     }
 
     public function getRosters() {
-        return Roster::where('client_id', $this->client->id)->with('metadata')
+        return Roster::withTrashed()->where('client_id', $this->client->id)->with('metadata')
             ->whereHas('metadata', function ($query) {
                 $query->whereNotNull('data->clever_id');
             })->get();
@@ -105,49 +85,32 @@ class CleverRosterCleaner extends Command
         return District::where('client_id', $this->client->id)->with('metadata')->first();
     }
 
-    public function processRoster($entity)
+    public function processRoster($roster)
     {
-        $return = $this->clever->section($entity->metadata->data['clever_id']);
+
+        $return = $this->clever->section($roster->metadata->data['clever_id']);
         if (isset($return->data['error'])) {
-            // We no longer have access, remove Clever ID from metadata
+
+            $logData = [
+                'roster_id' => $roster->id,
+                'roster_title' => $roster->title,
+                'roster_type' => $roster->type_id,
+                'clever_id' => $roster->metadata->data['clever_id'],
+                'timestamp' => Carbon::now()->toDateTimeString()
+            ];
+
             if ($return->data['error'] == 'Resource not found') {
-                $entity->delete();
-                $this->lostAccess++;
-                return 'Lost access...';
+                $data = $roster->metadata->data;
+                $data['old_clever_id'] = $data['clever_id'];
+                unset($data['clever_id']);
+                $roster->setMetadata($data);
+                $roster->delete();
             }
             else {
-                $this->otherError++;
-                return 'Not sure what happened...';
+                $logData['softDelete'] = false;
+                $logData['description'] = 'No clue, go figure it out';
             }
-
+            Log::info('['.Carbon::now()->toDateTimeString().'][CleverIdUserCleaner] '. json_encode($logData));
         }
-        return 'Nothing to do...';
     }
 }
-
-
-//php artisan clever:roster:fixer 3015 -vvv;
-//php artisan clever:roster:fixer 1036 -vvv;
-//php artisan clever:roster:fixer 1555 -vvv;
-//php artisan clever:roster:fixer 2881 -vvv;
-//php artisan clever:roster:fixer 2087 -vvv;
-//php artisan clever:roster:fixer 1422 -vvv;
-//php artisan clever:roster:fixer 2214 -vvv;
-//php artisan clever:roster:fixer 2309 -vvv;
-//php artisan clever:roster:fixer 709 -vvv;
-//php artisan clever:roster:fixer 701 -vvv;
-//php artisan clever:roster:fixer 2279 -vvv;
-//php artisan clever:roster:fixer 703 -vvv;
-//
-//php artisan clever:users:fixer 3015 -vvv;
-//php artisan clever:users:fixer 1036 -vvv;
-//php artisan clever:users:fixer 1555 -vvv;
-//php artisan clever:users:fixer 2881 -vvv;
-//php artisan clever:users:fixer 2087 -vvv;
-//php artisan clever:users:fixer 1422 -vvv;
-//php artisan clever:users:fixer 2214 -vvv;
-//php artisan clever:users:fixer 2309 -vvv;
-//php artisan clever:users:fixer 709 -vvv;
-//php artisan clever:users:fixer 701 -vvv;
-//php artisan clever:users:fixer 2279 -vvv;
-//php artisan clever:users:fixer 703 -vvv;

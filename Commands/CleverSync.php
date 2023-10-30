@@ -62,6 +62,7 @@ class CleverSync extends Command
     protected $signature = 'clever:sync 
         {clientId : The client ID to begin syncing}
         {--force : force the sync to run}
+        {--skipSections : Skip building sections}
         {--reset : reset to the event id we had stored}
         {--limit=10000 :  limit how many records we will get in this run from clever} 
         {--schoolslimit=10000 : limit how many clever schools we will process under this client}';
@@ -85,13 +86,13 @@ class CleverSync extends Command
     public function handle()
     {
 
-        $this->warn('Starting Sync...');
         $this->limit = $this->option('limit');
 
         $clientId = (int)$this->argument('clientId');
 
         // Get Clients key
         $this->client = $this->verify($clientId);
+        $this->warn('Starting Sync for Client: ' . $this->client->id . ' - ' . $this->client->title);
         $this->settings = config('settings');
         $this->redisKey = $this->client->id . ':' . 'clever_sync';
         $this->clever = new Api($this->client->metadata->data['api_secret']);
@@ -116,8 +117,10 @@ class CleverSync extends Command
         $this->syncStudentsInformation();
         $this->info('  ! Students Information Synced');
 
-        $this->syncSectionsInformation();
-        $this->info('  ! Sections Information Synced');
+        if ($this->option('skipSections') !== true) {
+            $this->syncSectionsInformation();
+            $this->info('  ! Sections Information Synced');
+        }
 
         $this->client->synced_on = Carbon::now()->toDateTimeString();
         $this->client->save();
@@ -157,16 +160,11 @@ class CleverSync extends Command
         $this->output->note('Syncing District Information...');
 
         $cleverDistricts = $this->getCleverDistricts();
-
+        $this->output->note('Checking for multiple districts...');
         $this->checkForMultipleDistricts($cleverDistricts);
-
         $cleverDistrict = $this->getFirstCleverDistrict($cleverDistricts);
-
-
         $this->districtId = $cleverDistrict['data']['id'];
-
         $cleverDistrictData = $this->getCleverDistrictDataById($this->districtId);
-
         $this->district = $this->ensureDistrictExists($cleverDistrictData);
 
         $data = [
@@ -213,7 +211,6 @@ class CleverSync extends Command
         if ($this->cleverIdExists($cleverDistrict->data['id'], Metadata::$metableClasses['districts'])) {
             return $this->findDistrictByCleverId($cleverDistrict->data['id']);
         }
-
         return $this->createNewDistrict($cleverDistrict->data);
     }
 
@@ -234,16 +231,17 @@ class CleverSync extends Command
 
     private function createNewDistrict($cleverData): District
     {
+
         $district = new District([
-            'title' => trim($cleverData->data['name']),
+            'title' => trim($cleverData['data']['name']),
             'client_id' => $this->client->id,
         ]);
 
         $district->save();
 
         $data = [
-            'mdr_number' => ($cleverData->data['mdr_number']) ?? null,
-            'clever_id' => $cleverData->data['id'],
+            'mdr_number' => ($cleverData['data']['mdr_number']) ?? null,
+            'clever_id' => $cleverData['data']['id'],
             'partner_id' => 1,
             'last_event' => $this->clever->getEvents($this->districtId)[0]->data['id'] ?? null,
         ];
@@ -276,8 +274,6 @@ class CleverSync extends Command
     private function processAdmin(array $cleverUser): void
     {
         $user = $this->processCleverUserData($cleverUser, 'admin');
-        // ToDO: Ask @ryan tomorrow about this, I don't want to fuck it up.
-        $cleverUser['data']['name']['first'] = str_replace('é', 'e', $cleverUser['data']['name']['first']);
         $user->save();
         $user->setMetadata(['clever_id' => $cleverUser['data']['id'], 'clever_information' => $cleverUser['data']]);
 
@@ -340,7 +336,7 @@ class CleverSync extends Command
 
     private function findOrCreateSite($school): Sites
     {
-        if ($this->cleverIdExists($school->data['id'], Metadata::$metableClasses['sites'])) {
+        if ($this->cleverIdExists($school->id, Metadata::$metableClasses['sites'])) {
             return $this->findSiteByCleverId($school);
         }
 
@@ -349,11 +345,10 @@ class CleverSync extends Command
 
     private function findSiteByCleverId($school)
     {
-        $site = Sites::where('client_id', $this->client->id)->whereHas('metadata', function ($q) use ($school) {
+        $site = Sites::withTrashed()->where('client_id', $this->client->id)->whereHas('metadata', function ($q) use ($school) {
             $q->where('data->clever_id', $school->data['id']);
         })->first();
-        $this->checkCleverIdMatch($site->metadata->data['clever_id'], $school->data['id']);
-
+        $site->restore();
         return $site;
     }
 
@@ -475,7 +470,7 @@ class CleverSync extends Command
 
         $this->output->newLine();
     }
-
+//
     /**********************     Sync Section Information    **********************/
     public function syncSectionsInformation()
     {
@@ -484,16 +479,16 @@ class CleverSync extends Command
         if (count($sections) >= 1 && $sections[0]->id !== null) {
             $this->output->note('Processing ' . count($sections) . ' sections...');
             $bar = $this->output->createProgressBar(count($sections));
-
             foreach ($sections as $section) {
                 if (!is_null($section->id)) {
-
                     if ($this->option('force')) {
-                        $job = new ProcessSectionJob($section->data, $this->client->id, $this->schools);
+                        $section = json_encode($section);
+                        $job = new ProcessSectionJob($section, $this->client->id);
                         $job->handle();
                     }
                     else {
-                        dispatch(new ProcessSectionJob($section->data, $this->client->id, $this->schools));
+                        $section = json_encode($section);
+                        dispatch(new ProcessSectionJob($section, $this->client->id));
                     }
                 }
                 $bar->advance();

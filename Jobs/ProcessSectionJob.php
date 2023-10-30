@@ -25,25 +25,21 @@ class ProcessSectionJob implements ShouldQueue
     protected $client;
     protected $schools;
 
-    public function __construct($cleverSection, $clientId, $schoolIds)
+    public function __construct($cleverSection, $clientId)
     {
-        $this->onQueue('clever_full_sync');
-        $collection = collect([]);
-        $collection->data = $cleverSection;
-        $collection->id = $cleverSection['id'];
-        $this->cleverSection = $collection;
-        $this->client = $clientId;
 
-        $this->schools = $schoolIds;
+        $this->onQueue('clever_full_sync');
+        $cleverSection = json_decode($cleverSection);
+        $sectionData = json_decode(json_encode($cleverSection->data), true);
+        $cleverSection->data = $sectionData;
+        $this->cleverSection = $cleverSection;
+        $this->client = $clientId;
     }
 
     public function handle()
     {
         $this->client = Client::find($this->client);
-
-
         $roster = $this->findOrCreateRoster($this->cleverSection);
-
 
         $this->syncTeachersToRoster($roster, $this->cleverSection->data['teachers']);
         $this->syncStudentsToRoster($roster, $this->cleverSection->data['students']);
@@ -56,7 +52,7 @@ class ProcessSectionJob implements ShouldQueue
         $startDate = (isset($section->data['start_date'])) ? new Carbon($section->data['start_date']) : null;
         $endDate = (isset($section->data['end_date'])) ? new Carbon($section->data['end_date']) : null;
 
-        $roster = Roster::withTrashed()->where('client_id', $this->client->id)
+        $roster = Roster::where('client_id', $this->client->id)
             ->whereHas('metadata', function ($q) use ($section) {
                 $q->where('data->clever_id', $section->data['id']);
             })
@@ -68,7 +64,7 @@ class ProcessSectionJob implements ShouldQueue
             $roster->type_id = 1;
         }
 
-        // Pulls Teacher ID from an Array of Teachers collected
+
         $teacher = EloquentUser::whereClientId($this->client->id)->whereHas('metadata', function ($q) use ($section) {
             $q->where('data->clever_id', $section->data['teacher']);
         })->first();
@@ -143,7 +139,6 @@ class ProcessSectionJob implements ShouldQueue
         })->get();
 
         $studentIds = $students->pluck('id')->toArray();
-
         $roster->users()->sync($studentIds);
     }
 

@@ -4,6 +4,7 @@ namespace LGL\Clever;
 
 use Illuminate\Support\ServiceProvider;
 use LGL\Clever\Commands\CleanCleverAccount;
+use LGL\Clever\Commands\CleverClientSSO;
 use LGL\Clever\Commands\CleverIdCleaner;
 use LGL\Clever\Commands\CleverReport;
 use LGL\Clever\Commands\CleverRosterCleaner;
@@ -39,14 +40,13 @@ class CleverServiceProvider extends ServiceProvider
 //        $routesPath = __DIR__ . '/Http/Routes/';
 
         $this->commands([
-            CleanCleverAccount::class,
             CleverIdCleaner::class,
             CleverRosterCleaner::class,
             CleverReport::class,
             CleverSync::class,
             UserSync::class,
             CleverUserCleaner::class,
-            CleverUsername::class
+            CleverUsername::class,
         ]);
     }
 }

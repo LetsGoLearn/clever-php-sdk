@@ -72,10 +72,11 @@ trait ProcessCleverUserTrait {
     public function processCleverUserData($cleverUser, $role): EloquentUser
     {
         $userFound = false;
+        $user = null;
         // First see if we have a CleverID in the system.
         if ($this->cleverIdExists($cleverUser['data']['id'], Metadata::$metableClasses['users'])) {
             $metadata = Metadata::ofCleverId($cleverUser['data']['id'])->where('metable_type', Metadata::$metableClasses['users'])->first();
-            $user = EloquentUser::withTrashed()->where('id', $metadata->metable_id)->first();
+            $user = EloquentUser::where('id', $metadata->metable_id)->first();
             if (!is_null($metadata) & is_null($user)) {
                 throw new Exception('Clever ID exists in MetaData, but no user found. ID: ' . $cleverUser['data']['id'] . ' Name: ' . $cleverUser['data']['name']['first'] . ' ' . $cleverUser['data']['name']['last'] . ' | eMail: ' . $cleverUser['data']['email'] . '. Metadata Record Present.');
             }
@@ -83,20 +84,12 @@ trait ProcessCleverUserTrait {
         }
 
         if ($this->emailExists($cleverUser['data']['email']) && $userFound !== true) {
-            $user = EloquentUser::withTrashed()->where('email', $cleverUser['data']['email'])
+            $user = EloquentUser::where('email', $cleverUser['data']['email'])
                 ->where('client_id', $this->client->id)
                 ->with('metadata')->first();
         }
-        else {
-            // Lets face it this is dangerous without the user type. We have to add it.
-            // So lets see if we can fix this. Students can be matched by dob as well as first and last name.
-            // Adding role is a safe assumption. So add role for extra safety.
-            $user = EloquentUser::withTrashed()->where('first_name', $cleverUser['data']['name']['first'])
-                ->where('last_name', $cleverUser['data']['name']['last'])
-                ->where('client_id', $this->client->id)
-                ->ofRole($role)
-                ->with('metadata')->first();
-        }
+
+        // At some point we should check for the first / last & DOB Match
 
         if (!is_null($user)) {
             $user->first_name = $cleverUser['data']['name']['first'];
@@ -178,7 +171,6 @@ trait ProcessCleverUserTrait {
      */
     public function cleverIdExists($cleverId, $metabletype)
     {
-
         if (Metadata::ofCleverId($cleverId)->where('metable_type', $metabletype)->count() > 1) {
             throw new ExceededCleverIdCount('Clever ID exists more than once in the system. ID: ' . $cleverId . ' .');
         }
@@ -253,9 +245,6 @@ trait ProcessCleverUserTrait {
 
     public function emailExists($email)
     {
-        if ($email !== '' && EloquentUser::where('email', $email)->count() > 1) {
-            throw new ExceededEmailCount('Email exists more than once in the system. Email: ' . $email . ' .');
-        }
         return (EloquentUser::where('email', $email)->first()) ? true : false;
     }
 
