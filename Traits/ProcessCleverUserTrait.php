@@ -5,14 +5,14 @@ namespace LGL\Clever\Traits;
 
 use Carbon\Carbon;
 use Illuminate\Support\Facades\Hash;
+use Illuminate\Support\Facades\Log;
 use LGL\Auth\Users\EloquentUser;
 use LGL\Clever\Commands\CleverSync;
 use LGL\Clever\Exceptions\CleverIdMissMatch;
 use LGL\Clever\Exceptions\CleverNullUser;
 use LGL\Clever\Exceptions\EmailMissMatch;
-use LGL\Clever\Exceptions\ExceededCleverIdCount;
-use LGL\Clever\Exceptions\ExceededEmailCount;
 use LGL\Clever\Exceptions\Exception;
+
 use LGL\Core\Accounts\Models\Site;
 use LGL\Core\Models\Metadata;
 
@@ -112,7 +112,8 @@ trait ProcessCleverUserTrait {
             return $user;
         }
 
-        throw new CleverNullUser('Clever ID exists, but no user found/null. ID: ' . $cleverUser['data']['id'] . ' Name: ' . $cleverUser['data']['name']['first'] . ' ' . $cleverUser['data']['name']['last'] . ' | eMail: ' . $cleverUser['data']['email'] . '. Usually indicates a duplicate User record. One is missing the email.');
+        Log::alert('Clever ID exists unsure what to do. ID: ' . $cleverUser['data']['id'] . ' Name: ' . $cleverUser['data']['name']['first'] . ' ' . $cleverUser['data']['name']['last'] . ' | eMail: ' . $cleverUser['data']['email'] . '. Usually indicates a duplicate User record. One is missing the email.');
+//        throw new CleverNullUser('Clever ID exists, but no user found/null. ID: ' . $cleverUser['data']['id'] . ' Name: ' . $cleverUser['data']['name']['first'] . ' ' . $cleverUser['data']['name']['last'] . ' | eMail: ' . $cleverUser['data']['email'] . '. Usually indicates a duplicate User record. One is missing the email.');
     }
 
     private function getSchoolsToAttach($schoolCleverIds)
@@ -172,14 +173,15 @@ trait ProcessCleverUserTrait {
     public function cleverIdExists($cleverId, $metabletype)
     {
         if (Metadata::ofCleverId($cleverId)->where('metable_type', $metabletype)->count() > 1) {
-            throw new ExceededCleverIdCount('Clever ID exists more than once in the system. ID: ' . $cleverId . ' .');
+            Log::error("Clever ID exists more than once in the system. ID: " . $cleverId . " .");
         }
+
         return (Metadata::ofCleverId($cleverId)->where('metable_type', $metabletype)->first()) ? true : false;
     }
 
     private function syncUserToSites($user, $attachToSchools)
     {
-        $user->sites()->syncWithoutDetaching($attachToSchools);
+        $user->sites()->sync($attachToSchools);
     }
 
     public function getUsername($array, $type = null)

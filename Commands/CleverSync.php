@@ -343,7 +343,7 @@ class CleverSync extends Command
         return $this->createNewSite($school);
     }
 
-    private function findSiteByCleverId($school)
+    private function findSiteByCleverId($school): Sites
     {
         $site = Sites::withTrashed()->where('client_id', $this->client->id)->whereHas('metadata', function ($q) use ($school) {
             $q->where('data->clever_id', $school->data['id']);

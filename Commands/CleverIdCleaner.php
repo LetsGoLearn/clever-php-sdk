@@ -16,23 +16,27 @@ class CleverIdCleaner extends Command
      *
      * @var string
      */
-    protected $signature = 'clever:id:fixer';
+    protected $signature = 'clever:id:fixer {--rosters : Process only rosters} {--users : Process only users}';
 
     /**
      * The console command description.
      *
      * @var string
      */
-    protected $description = 'This works with duplicate Clever IDs for Rosters Only as of 2023-09-09.';
+    protected $description = 'Attempts to clean accounts with multiple Clever IDs.';
 
     /**
      * Execute the console command.
      */
     public function handle()
     {
-        $this->processRosters();
-        $this->processUsers();
+        if ($this->option('users') || (!$this->option('users') && !$this->option('rosters'))) {
+            $this->processUsers();
+        }
 
+        if ($this->option('rosters') || (!$this->option('users') && !$this->option('rosters'))) {
+            $this->processRosters();
+        }
     }
 
     private function processRosters() {
