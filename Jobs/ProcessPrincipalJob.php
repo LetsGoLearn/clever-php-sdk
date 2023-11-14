@@ -10,14 +10,16 @@ use Illuminate\Queue\SerializesModels;
 use LGL\Auth\Users\EloquentUser;
 use LGL\Clever\Traits\ProcessCleverUserTrait;
 use LGL\Core\Accounts\Models\Client;
+use Illuminate\Bus\Batchable;
 
 class ProcessPrincipalJob implements ShouldQueue
 {
-    use Dispatchable, InteractsWithQueue, Queueable, SerializesModels, ProcessCleverUserTrait;
+    use Dispatchable, InteractsWithQueue, Queueable, SerializesModels, ProcessCleverUserTrait, Batchable;
 
     protected $cleverUser;
     protected $client;
     protected $schools;
+    public $tries = 1;
 
     public function __construct($cleverUser, $clientId, $schoolIds)
     {

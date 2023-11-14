@@ -3,6 +3,8 @@
 namespace LGL\Clever\Commands;
 
 use Carbon\Carbon;
+use Illuminate\Bus\Batch;
+use Illuminate\Support\Facades\Bus;
 use LGL\Clever\Api;
 use Illuminate\Console\Command;
 use LGL\Clever\Exceptions\Exception;
@@ -383,19 +385,22 @@ class CleverSync extends Command
         if ($admins[0]->id !== null) { // So dumb
             $this->output->note('Processing ' . count($admins) . ' school admins...');
             $this->initializeProgressBar(count($admins));
-
+            $jobs = [];
             foreach ($admins as $cleverUser) {
                 if ($this->option('force')) {
                     $job = new ProcessPrincipalJob($cleverUser->data, $this->client->id, $this->schools);
                     $job->handle();
                 }
                 else {
-                    dispatch(new ProcessPrincipalJob($cleverUser->data, $this->client->id, $this->schools));
+//                    dispatch(new ProcessPrincipalJob($cleverUser->data, $this->client->id, $this->schools));
+                    $jobs[] = new ProcessPrincipalJob($cleverUser->data, $this->client->id, $this->schools);
                 }
 
                 $this->progressBar->advance();
             }
+            Bus::batch($jobs)->then(function (Batch $batch) {
 
+            })->name('Clever Principal Sync: ' . $this->client->id)->dispatch();
             $this->finalizeProgressBar();
             $this->newLine();
             $this->info('  ! Principals Information Synced');
@@ -417,7 +422,7 @@ class CleverSync extends Command
             $this->output->note('Processing ' . count($object) . ' teachers...');
             echo "\n";
             $bar = $this->output->createProgressBar(count($object));
-
+            $jobs = [];
             foreach ($object as $cleverUser) {
                 if (!is_null($cleverUser->id)) {
                     if($this->option('force')) {
@@ -425,11 +430,13 @@ class CleverSync extends Command
                         $job->handle();
                     }
                     else {
-                        dispatch(new ProcessTeacherJob($cleverUser->data, $this->client->id, $this->schools));
+//                        dispatch(new ProcessTeacherJob($cleverUser->data, $this->client->id, $this->schools));
+                        $jobs[] = new ProcessTeacherJob($cleverUser->data, $this->client->id, $this->schools);
                     }
                 }
                 $bar->advance();
             }
+            Bus::batch($jobs)->name('Clever Teacher Sync: ' . $this->client->id)->dispatch();;
 
             $bar->finish();
         } else {
@@ -450,6 +457,7 @@ class CleverSync extends Command
         if (count($object) >= 1 && $object[0]->id !== null) {
             $this->output->note('Processing ' . count($object) . ' students...');
             $bar = $this->output->createProgressBar(count($object));
+            $jobs = [];
             foreach ($object as $cleverUser) {
                 if (!is_null($cleverUser->id)) {
 
@@ -458,11 +466,12 @@ class CleverSync extends Command
                         $job->handle();
                     }
                     else {
-                        dispatch(new ProcessStudentJob($cleverUser->data, $this->client->id, $this->schools));
+                        $jobs[] = new ProcessStudentJob($cleverUser->data, $this->client->id, $this->schools);
                     }
                 }
                 $bar->advance();
             }
+            Bus::batch($jobs)->name('Clever Student Sync: ' . $this->client->id)->dispatch();;
             $bar->finish();
         } else {
             $this->output->error('No Student Information to Sync!');
@@ -479,6 +488,7 @@ class CleverSync extends Command
         if (count($sections) >= 1 && $sections[0]->id !== null) {
             $this->output->note('Processing ' . count($sections) . ' sections...');
             $bar = $this->output->createProgressBar(count($sections));
+            $jobs = [];
             foreach ($sections as $section) {
                 if (!is_null($section->id)) {
                     if ($this->option('force')) {
@@ -488,12 +498,13 @@ class CleverSync extends Command
                     }
                     else {
                         $section = json_encode($section);
-                        dispatch(new ProcessSectionJob($section, $this->client->id));
+//                        dispatch(new ProcessSectionJob($section, $this->client->id));
+                        $jobs[] = new ProcessSectionJob($section, $this->client->id);
                     }
                 }
                 $bar->advance();
             }
-
+            Bus::batch($jobs)->name('Clever Section Sync: ' . $this->client->id)->dispatch();
             $bar->finish();
         } else {
             $this->info('No Section/Class Information!');

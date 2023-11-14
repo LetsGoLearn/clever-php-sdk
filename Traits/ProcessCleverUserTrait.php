@@ -9,10 +9,9 @@ use Illuminate\Support\Facades\Log;
 use LGL\Auth\Users\EloquentUser;
 use LGL\Clever\Commands\CleverSync;
 use LGL\Clever\Exceptions\CleverIdMissMatch;
-use LGL\Clever\Exceptions\CleverNullUser;
 use LGL\Clever\Exceptions\EmailMissMatch;
+use LGL\Clever\Exceptions\ExceededCleverIdCount;
 use LGL\Clever\Exceptions\Exception;
-
 use LGL\Core\Accounts\Models\Site;
 use LGL\Core\Models\Metadata;
 
@@ -78,17 +77,18 @@ trait ProcessCleverUserTrait {
             $metadata = Metadata::ofCleverId($cleverUser['data']['id'])->where('metable_type', Metadata::$metableClasses['users'])->first();
             $user = EloquentUser::where('id', $metadata->metable_id)->first();
             if (!is_null($metadata) & is_null($user)) {
-                throw new Exception('Clever ID exists in MetaData, but no user found. ID: ' . $cleverUser['data']['id'] . ' Name: ' . $cleverUser['data']['name']['first'] . ' ' . $cleverUser['data']['name']['last'] . ' | eMail: ' . $cleverUser['data']['email'] . '. Metadata Record Present.');
+                throw new Exception('['.Carbon::now()->toDateTimeString().'][Clever][IdMetadata] '.'Clever ID exists in MetaData, but no user found. ID: ' . $cleverUser['data']['id'] . ' Name: ' . $cleverUser['data']['name']['first'] . ' ' . $cleverUser['data']['name']['last'] . ' | eMail: ' . $cleverUser['data']['email'] . '. Metadata Record Present. ');
             }
             $userFound = true;
         }
 
-        if ($this->emailExists($cleverUser['data']['email']) && $userFound !== true) {
-            $user = EloquentUser::where('email', $cleverUser['data']['email'])
-                ->where('client_id', $this->client->id)
-                ->with('metadata')->first();
+        if (isset($cleverUser['data']['email']) && $userFound !== true) {
+            if ($this->emailExists($cleverUser['data']['email'])) {
+                $user = EloquentUser::where('email', $cleverUser['data']['email'])
+                    ->where('client_id', $this->client->id)
+                    ->with('metadata')->first();
+            }
         }
-
         // At some point we should check for the first / last & DOB Match
 
         if (!is_null($user)) {
@@ -173,7 +173,7 @@ trait ProcessCleverUserTrait {
     public function cleverIdExists($cleverId, $metabletype)
     {
         if (Metadata::ofCleverId($cleverId)->where('metable_type', $metabletype)->count() > 1) {
-            Log::error("Clever ID exists more than once in the system. ID: " . $cleverId . " .");
+            throw new ExceededCleverIdCount('['.Carbon::now()->toDateTimeString().'][Clever][MultipleIds] Clever ID exists more than once in the system. ID: ' . $cleverId . ' | Type: ' . $metabletype . '.');
         }
 
         return (Metadata::ofCleverId($cleverId)->where('metable_type', $metabletype)->first()) ? true : false;

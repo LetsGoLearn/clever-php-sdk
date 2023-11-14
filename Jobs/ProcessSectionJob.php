@@ -8,6 +8,7 @@ use Illuminate\Foundation\Bus\Dispatchable;
 use Illuminate\Queue\InteractsWithQueue;
 use Illuminate\Queue\SerializesModels;
 use LGL\Auth\Users\EloquentUser;
+use LGL\Clever\Exceptions\CleverNullUser;
 use LGL\Clever\Traits\ProcessCleverUserTrait;
 use LGL\Core\Accounts\Models\Client;
 use Carbon\Carbon;
@@ -16,14 +17,18 @@ use LGL\Core\Models\Period as Periods;
 use LGL\Core\Models\Subject as Subjects;
 use LGL\Core\Rosters\Models\Roster;
 use LGL\Core\Accounts\Models\Site;
+use Illuminate\Support\Facades\Log;
+use Illuminate\Bus\Batchable;
 
 class ProcessSectionJob implements ShouldQueue
 {
-    use Dispatchable, InteractsWithQueue, Queueable, SerializesModels, ProcessCleverUserTrait;
+    use Dispatchable, InteractsWithQueue, Queueable, SerializesModels, ProcessCleverUserTrait, Batchable;
 
     protected $cleverSection;
     protected $client;
     protected $schools;
+
+    public $tries = 1;
 
     public function __construct($cleverSection, $clientId)
     {
@@ -52,6 +57,15 @@ class ProcessSectionJob implements ShouldQueue
         $startDate = (isset($section->data['start_date'])) ? new Carbon($section->data['start_date']) : null;
         $endDate = (isset($section->data['end_date'])) ? new Carbon($section->data['end_date']) : null;
 
+        $teacher = EloquentUser::whereClientId($this->client->id)->whereHas('metadata', function ($q) use ($section) {
+            $q->where('data->clever_id', $section->data['teacher']);
+        })->first();
+
+        if ($teacher === null) {
+            Log::info('['.Carbon::now()->toDateTimeString().'][Clever][NullUser] '. 'Teacher not found for section ' . $section->data['name'] . ' (' . $section->data['id'] . ')' . ' in client ' . $this->client->id . '. Skipping roster creation.  | ' . json_encode($section));
+            throw new CleverNullUser('Teacher not found for section ' . $section->data['name'] . ' (' . $section->data['id'] . ')' . ' in client ' . $this->client->id);
+        }
+
         $roster = Roster::where('client_id', $this->client->id)
             ->whereHas('metadata', function ($q) use ($section) {
                 $q->where('data->clever_id', $section->data['id']);
@@ -63,13 +77,6 @@ class ProcessSectionJob implements ShouldQueue
             $roster = new Roster();
             $roster->type_id = 1;
         }
-
-
-        $teacher = EloquentUser::whereClientId($this->client->id)->whereHas('metadata', function ($q) use ($section) {
-            $q->where('data->clever_id', $section->data['teacher']);
-        })->first();
-        $roster->user_id = $teacher->id;
-
 
         $site = Site::whereClientId($this->client->id)->whereHas('metadata', function ($q) use ($section) {
             $q->where('data->clever_id', $section->data['school']);

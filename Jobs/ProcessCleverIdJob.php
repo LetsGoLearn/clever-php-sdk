@@ -20,6 +20,7 @@ class ProcessCleverIdJob implements ShouldQueue
     protected $client;
     protected string $role;
     protected $clever;
+    public $tries = 1;
 
     public function __construct($userId, $clientId, $role)
     {

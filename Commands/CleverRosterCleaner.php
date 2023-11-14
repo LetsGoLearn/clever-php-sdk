@@ -110,7 +110,7 @@ class CleverRosterCleaner extends Command
                 $logData['softDelete'] = false;
                 $logData['description'] = 'No clue, go figure it out';
             }
-            Log::info('['.Carbon::now()->toDateTimeString().'][CleverIdUserCleaner] '. json_encode($logData));
+            Log::info('['.Carbon::now()->toDateTimeString().'][Clever][IdUserCleaner] '. json_encode($logData));
         }
     }
 }

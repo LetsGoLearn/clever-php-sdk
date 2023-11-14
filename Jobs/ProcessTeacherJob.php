@@ -2,6 +2,7 @@
 
 namespace LGL\Clever\Jobs;
 
+use Illuminate\Bus\Batchable;
 use Illuminate\Bus\Queueable;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Foundation\Bus\Dispatchable;
@@ -12,12 +13,12 @@ use LGL\Core\Accounts\Models\Client;
 
 class ProcessTeacherJob implements ShouldQueue
 {
-    use Dispatchable, InteractsWithQueue, Queueable, SerializesModels, ProcessCleverUserTrait;
+    use Dispatchable, InteractsWithQueue, Queueable, SerializesModels, ProcessCleverUserTrait, Batchable;
 
     protected $cleverUser;
     protected $client;
     protected $schools;
-
+    public $tries = 1;
 
     public function __construct($cleverUser, $clientId, $schoolIds)
     {

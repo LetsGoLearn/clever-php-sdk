@@ -18,6 +18,7 @@ class AccessCheckTeacherJob implements ShouldQueue
     protected $cleverUser;
     protected $client;
     protected $schools;
+    public $tries = 1;
 
     public function __construct($cleverUser, $clientId, $schoolIds)
     {

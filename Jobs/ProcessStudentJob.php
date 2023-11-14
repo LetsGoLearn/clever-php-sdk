@@ -11,13 +11,15 @@ use LGL\Clever\Traits\ProcessCleverUserTrait;
 use LGL\Core\Accounts\Models\Client;
 use Carbon\Carbon;
 use Calc;
+use Illuminate\Bus\Batchable;
 
 class ProcessStudentJob implements ShouldQueue
 {
-    use Dispatchable, InteractsWithQueue, Queueable, SerializesModels, ProcessCleverUserTrait;
+    use Dispatchable, InteractsWithQueue, Queueable, SerializesModels, ProcessCleverUserTrait, Batchable;
 
     protected $cleverUser;
     protected $client;
+    public $tries = 1;
 
     public function __construct($cleverUser, $clientId, $schoolIds)
     {
