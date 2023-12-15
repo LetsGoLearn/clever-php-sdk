@@ -54,10 +54,6 @@ class CleverIdCleaner extends Command
         if ($duplicateCleverIds->count() !== 0) {
 
             $this->info("Found " . count($duplicateCleverIds) . " duplicate Clever IDs.");
-            if(count($duplicateCleverIds) === 0) {
-                $this->info("No duplicate Clever IDs found.");
-                return;
-            }
             $this->info("Processing...");
             $bar = $this->output->createProgressBar(count($duplicateCleverIds));
             $bar->start();
@@ -92,12 +88,11 @@ class CleverIdCleaner extends Command
             ->get()->pluck('clever_id')->toArray();
 
         $duplicateCleverIds = array_filter($duplicateCleverIds);
-        $this->info("Found " . count($duplicateCleverIds) . " duplicate Clever IDs.");
         if(count($duplicateCleverIds) === 0) {
             $this->info("No duplicate Clever IDs found.");
             return;
         }
-
+        $this->info("Found " . count($duplicateCleverIds) . " duplicate Clever IDs.");
         $this->info("Processing...");
         $bar = $this->output->createProgressBar(count($duplicateCleverIds));
         $bar->start();

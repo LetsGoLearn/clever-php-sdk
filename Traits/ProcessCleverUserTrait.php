@@ -77,19 +77,51 @@ trait ProcessCleverUserTrait {
             $metadata = Metadata::ofCleverId($cleverUser['data']['id'])->where('metable_type', Metadata::$metableClasses['users'])->first();
             $user = EloquentUser::where('id', $metadata->metable_id)->first();
             if (!is_null($metadata) & is_null($user)) {
+                Log::alert('['.Carbon::now()->toDateTimeString().'][Clever][IdMetadata] '.'Clever ID exists in MetaData, but no user found. ID: ' . $cleverUser['data']['id'] . ' Name: ' . $cleverUser['data']['name']['first'] . ' ' . $cleverUser['data']['name']['last'] . ' | eMail: ' . $cleverUser['data']['email'] . '. Metadata Record Present. ');
                 throw new Exception('['.Carbon::now()->toDateTimeString().'][Clever][IdMetadata] '.'Clever ID exists in MetaData, but no user found. ID: ' . $cleverUser['data']['id'] . ' Name: ' . $cleverUser['data']['name']['first'] . ' ' . $cleverUser['data']['name']['last'] . ' | eMail: ' . $cleverUser['data']['email'] . '. Metadata Record Present. ');
             }
             $userFound = true;
         }
 
-        if (isset($cleverUser['data']['email']) && $userFound !== true) {
-            if ($this->emailExists($cleverUser['data']['email'])) {
-                $user = EloquentUser::where('email', $cleverUser['data']['email'])
-                    ->where('client_id', $this->client->id)
-                    ->with('metadata')->first();
+        // Get user by Foreign ID
+
+        if ($role == 'student' && isset($cleverUser['data']['student_number']) && $userFound !== true) {
+            $user = EloquentUser::where('client_id', $this->client->id)
+                ->whereHas('metadata', function ($q) use ($cleverUser) {
+                    $q->where('data->foreign_id', $cleverUser['data']['student_number']);
+                })
+                ->with('metadata')
+                ->first();
+
+            if($user) {
+                $userFound = true;
+            }
+            else {
+                $dob = new Carbon($cleverUser['data']['dob']);
+
+                $user = EloquentUser::where('client_id', $this->client->id)
+                    ->where('first_name', $cleverUser['data']['name']['first'])
+                    ->where('last_name', $cleverUser['data']['name']['last'])
+                    ->whereHas('metadata', function ($q) use ($cleverUser, $dob) {
+                        $q->where('data->sis_id', $dob->toDateString());
+                    })
+                    ->with('metadata')
+                    ->first();
+            }
+            if ($user) {
+                $userFound = true;
             }
         }
-        // At some point we should check for the first / last & DOB Match
+
+
+        // Get User By Email
+        if (isset($cleverUser['data']['email']) && $userFound !== true) {
+           $user = EloquentUser::where('email', $cleverUser['data']['email'])
+                    ->orWhere('username', $cleverUser['data']['email'])
+                    ->where('client_id', $this->client->id)
+                    ->with('metadata')->first();
+        }
+
 
         if (!is_null($user)) {
             $user->first_name = $cleverUser['data']['name']['first'];
@@ -173,6 +205,7 @@ trait ProcessCleverUserTrait {
     public function cleverIdExists($cleverId, $metabletype)
     {
         if (Metadata::ofCleverId($cleverId)->where('metable_type', $metabletype)->count() > 1) {
+            Log::alert('['.Carbon::now()->toDateTimeString().'][Clever][MultipleIds] Clever ID exists more than once in the system. ID: ' . $cleverId . ' | Type: ' . $metabletype . '.');
             throw new ExceededCleverIdCount('['.Carbon::now()->toDateTimeString().'][Clever][MultipleIds] Clever ID exists more than once in the system. ID: ' . $cleverId . ' | Type: ' . $metabletype . '.');
         }
 

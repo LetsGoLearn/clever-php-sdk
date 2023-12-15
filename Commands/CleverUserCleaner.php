@@ -89,15 +89,8 @@ class CleverUserCleaner extends Command
                     ProcessCleverIdJob::dispatch($user->id, $user->client_id, $role);
                 }
             }
-            $bar->advance(100);
+            $bar->advance($chunk->count());
         });
-
-        foreach ($users as $user) {
-            if ($user->exists) {
-                ProcessCleverIdJob::dispatch($user->id, $user->client_id, $role);
-            }
-            $bar->advance();
-        }
 
         $bar->finish();
         $this->newLine(2);

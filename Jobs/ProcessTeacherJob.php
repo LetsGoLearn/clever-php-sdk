@@ -40,6 +40,7 @@ class ProcessTeacherJob implements ShouldQueue
         $user = $this->processCleverUserData($cleverUserArray, 'teacher');
         $data = $this->coreData($this->cleverUser, 'teacher', 1);
         $data['created_by'] = 'Clever Process - Client Sync - CLI';
+        $data['foreign_id'] = $cleverUserArray['data']['teacher_number'];
         $data['clever_information'] = $cleverUserArray['data'];
         $this->updateTeacherDetails($user, $data);
         $attachToSchools = $this->getSchoolsToAttach($cleverUserArray['data']['schools']);
