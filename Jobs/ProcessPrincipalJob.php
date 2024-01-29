@@ -23,7 +23,7 @@ class ProcessPrincipalJob implements ShouldQueue
 
     public function __construct($cleverUser, $clientId, $schoolIds)
     {
-        $this->onQueue('clever_full_sync');
+        $this->onQueue('default');
         $collection = collect([]);
         $collection->data = $cleverUser;
         $collection->id = $cleverUser['id'];

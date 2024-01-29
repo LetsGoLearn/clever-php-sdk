@@ -24,7 +24,7 @@ class ProcessCleverIdJob implements ShouldQueue
 
     public function __construct($userId, $clientId, $role)
     {
-        $this->onQueue('clever_full_sync');
+        $this->onQueue('default');
         $this->client = Client::find($clientId);
         $this->user = EloquentUser::withTrashed()->where('id', '=', $userId)->with('metadata')->first();
         $this->role = $role;

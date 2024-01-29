@@ -44,7 +44,7 @@ class ProcessSectionJob implements ShouldQueue
     {
 
         // Set the queue name
-        $this->onQueue('clever_full_sync');
+        $this->onQueue('default');
         
         // Data sent from Clever, set the JSON Object for usage during processing.
         $this->cleverSection = json_decode($cleverSection);
