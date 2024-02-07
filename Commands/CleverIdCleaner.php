@@ -60,12 +60,7 @@ class CleverIdCleaner extends Command
             foreach ($duplicateCleverIds as $cleverId) {
                 $metadataRecords = Metadata::where('data->clever_id', $cleverId)->get();
                 if ($metadataRecords->count() > 1) {
-                    Log::error("[MultiCleverIds] Found {$metadataRecords->count()} records with Clever ID: {$cleverId} for rosters. metabale_ids: {$metadataRecords->pluck('metable_id')->implode(', ')} | metable_types: {$metadataRecords->pluck('metable_type')->implode(', ')}");
-                    $slicedRecords = $metadataRecords->slice(1);
-                    foreach ($slicedRecords as $record) {
-                        $roster = Roster::find($record->metable_id);
-                        $roster->delete();
-                    }
+                    $this->info("[MultiCleverIds] Found {$metadataRecords->count()} records with Clever ID: {$cleverId} for rosters. Roster Ids: {$metadataRecords->pluck('metable_id')->implode(', ')} | metable_types: {$metadataRecords->pluck('metable_type')->implode(', ')}");
                 }
                 $bar->advance();
             }
@@ -94,45 +89,34 @@ class CleverIdCleaner extends Command
         }
         $this->info("Found " . count($duplicateCleverIds) . " duplicate Clever IDs.");
         $this->info("Processing...");
-        $bar = $this->output->createProgressBar(count($duplicateCleverIds));
-        $bar->start();
         foreach ($duplicateCleverIds as $cleverId) {
             $metadataRecords = Metadata::where('data->clever_id', $cleverId)->get();
             if ($metadataRecords->count() > 1) {
-                $users = EloquentUser::with('metadata', 'roles')->whereIn('id', $metadataRecords->pluck('metable_id')->toArray())->orderBy('created_at')->get();
+                $users = EloquentUser::withTrashed()->with('metadata', 'roles', 'queue')->whereIn('id', $metadataRecords->pluck('metable_id')->toArray())->orderBy('created_at')->get();
                 Log::error("[MultiCleverIds] Found {$metadataRecords->count()} records with Clever ID: {$cleverId} for users. metabale_ids: {$metadataRecords->pluck('metable_id')->implode(', ')} | metable_types: {$metadataRecords->pluck('metable_type')->implode(', ')}");
+                $this->info("[MultiCleverIds] Found {$metadataRecords->count()} records with Clever ID: {$cleverId} for users. metabale_ids: {$metadataRecords->pluck('metable_id')->implode(', ')} | metable_types: {$metadataRecords->pluck('metable_type')->implode(', ')}");
+                // Check for a queue record for any users
+                $hasQueueRecords = $users->contains(function ($user) {
+                    return $user->queue->isNotEmpty();
+                });
 
-                // Get the user with the most recent non-null last_login
-                $latestUser = $users->filter(function ($user) {
-                    return !is_null($user->last_login);
-                })->sortByDesc('last_login')->first();
-
-                if (!$latestUser) {
-                    $latestUser = $users->sortByDesc('created_at')->first();
+                if ($hasQueueRecords) {
+                    foreach ($users as $user) {
+                        $this->info('User Id: '.$user->id.' | Last Login: '.$user->last_login.' | Created at: '.$user->created_at.' | Deleted at: '.$user->deleted_at);
+                    }
+                    $this->info("Diane should look at these student ID's to merge: ".implode(',',$users->pluck('id')->all()));
                 }
 
-                $users = $users->reject(function ($user) use ($latestUser) {
-                    return $user->id == $latestUser->id;
-                })->values();  // The values() method re-indexes the collection
-
-                foreach ($users as $user) {
-                    if (is_null($user->last_login)) {
-                        $user->delete();
-                        Log::error("[MultiCleverIds] User has never logged in. Moving Clever ID to error_clever_id. Need to hard Delete User. User ID: {$user->id} | Clever ID: {$cleverId}");
+                else {
+                    $sortedUsers = $users->sortBy(['last_login', 'created_at']);
+                    foreach ($sortedUsers as $user) {
+                        $this->info('User Id: '.$user->id.' | Last Login: '.$user->last_login.' | Created at: '.$user->created_at.' | Deleted at: '.$user->deleted_at);
                     }
-                    else {
-                        $data = $user->metadata->data;
-                        $data['error_clever_id'] = $data['clever_id'];
-                        unset($data['clever_id']);
-                        $user->setMetadata($data, true);
-                        $user->delete();
-                        Log::error("[MultiCleverIds] User has logged in. Not Sure what to do. Soft Delete User. Change where clever_id is stored. // Possible Merge Needed. User ID: {$user->id} | Clever ID: {$cleverId}");
-                    }
+                    $this->info("Diane should look at these ID's to merge they do not have any queue records: ".implode(',',$users->pluck('id')->all()));
                 }
+                $this->newLine(2);
             }
-            $bar->advance();
         }
-        $bar->finish();
         $this->newLine(2);
     }
     private function getRoles($users) {
