@@ -8,6 +8,7 @@ use LGL\Clever\Commands\CleverClientSSO;
 use LGL\Clever\Commands\CleverIdCleaner;
 use LGL\Clever\Commands\CleverReport;
 use LGL\Clever\Commands\CleverRosterCleaner;
+use LGL\Clever\Commands\CleverSectionSync;
 use LGL\Clever\Commands\CleverSync;
 use LGL\Clever\Commands\CleverUserCleaner;
 use LGL\Clever\Commands\CleverUsername;
@@ -42,6 +43,7 @@ class CleverServiceProvider extends ServiceProvider
         $this->commands([
             CleverIdCleaner::class,
             CleverRosterCleaner::class,
+            CleverSectionSync::class,
             CleverReport::class,
             CleverSync::class,
             UserSync::class,
