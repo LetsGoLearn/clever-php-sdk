@@ -19,6 +19,7 @@ use LGL\Core\Imports\Traits\ProcessUser;
 use LGL\Core\Rosters\Models\Roster;
 use LGL\Auth\Users\EloquentUser;
 use LGL\Core\Models\Metadata;
+
 /**
  * Class CleverSync.
  */
@@ -43,9 +44,9 @@ class UserSync extends Command
      *
      * @var string
      */
-    protected $signature = 'clever:userSync 
-    {clientId : Client\'s LGL ID to sync} 
-    {type : The clever type} 
+    protected $signature = 'clever:userSync
+    {clientId : Client\'s LGL ID to sync}
+    {type : The clever type}
     {cleverId : User\'s clever id}
     {--debug : Set to output more messages.}
     {--notify= : The LGL id of a user to notify in the system when the command has completed.}';
@@ -74,14 +75,13 @@ class UserSync extends Command
     {
 
 
-
-        $cleverSections   = null;
+        $cleverSections = null;
         $this->adminTypes = config('clever')['adminTypes'];
         try {
-            $this->client   = $this->verify(Clients::with('metadata')->find($this->argument('clientId')));
+            $this->client = $this->verify(Clients::with('metadata')->find($this->argument('clientId')));
             $this->cleverId = $this->argument('cleverId');
-            $this->type     = $this->argument('type');
-            $this->clever   = new Api($this->client->metadata->data['api_secret']);
+            $this->type = $this->argument('type');
+            $this->clever = new Api($this->client->metadata->data['api_secret']);
 
             // Do we have access to the user?
             if ($this->type == 'teacher') {
@@ -97,7 +97,7 @@ class UserSync extends Command
             $idInUse = Metadata::ofCleverId($this->cleverId)->get();
 
             $this->warn('Checking for to many of a resource');
-            foreach($idInUse as $metadata) {
+            foreach ($idInUse as $metadata) {
                 // ToDo: Clever: Check if user exists before moving on.
                 $this->user = EloquentUser::withTrashed()->find($metadata->metable_id);
                 if (is_null($this->user)) {
@@ -106,13 +106,12 @@ class UserSync extends Command
                     unset($data['clever_id']);
                     $metadata->data = $data;
                     $metadata->save();
-                }
-                else {
+                } else {
                     $this->warn('User is not deleted. Moving on...');
                 }
                 $type = $this->type;
                 $cleverInfo = $this->clever->$type($this->cleverId);
-                if(isset($cleverInfo->data['error'])) {
+                if (isset($cleverInfo->data['error'])) {
                     $this->warn('Clever Id: '.$this->cleverId.' is no longer in clever. Removing...');
                     $metadata->data['clever_id'] = false;
                     $metadata->data['clever_id_removed'] = $this->cleverId;
@@ -121,25 +120,27 @@ class UserSync extends Command
             }
 
             if ($this->type === 'teacher') {
-                $siteLinkNumber   = 2;
+                $siteLinkNumber = 2;
                 $rosterLinkNumber = 5;
             } elseif ($this->type === 'student') {
-                $siteLinkNumber   = 3;
+                $siteLinkNumber = 3;
                 $rosterLinkNumber = 2;
             } elseif (in_array($this->type, $this->adminTypes)) {
-                $siteLinkNumber   = 1;
+                $siteLinkNumber = 1;
                 $rosterLinkNumber = null;
             } else {
-                throw new Exception($this->type.' is not a valid type. We support teacher, student,'.implode(', ', $this->adminTypes).' syncs.');
+                throw new Exception($this->type.' is not a valid type. We support teacher, student,'.implode(', ',
+                        $this->adminTypes).' syncs.');
             }
             $this->metadata = $this->getCleverMetadata($this->cleverId);
-            $cleverPull     = $this->pullInCleverData();
+            $cleverPull = $this->pullInCleverData();
+
             if ($cleverPull) {
                 /** @noinspection PhpUndefinedFieldInspection */
-                $cleverData                     = $cleverPull->data;
+                $cleverData = $cleverPull->data;
                 $cleverData['data']['clientId'] = $this->client->id;
-                $cleverLink                     = $cleverData['links'][$siteLinkNumber]['uri'];
-                $cleverRosterLink               = $cleverData['links'][$rosterLinkNumber]['uri'];
+                $cleverLink = $cleverData['links'][$siteLinkNumber]['uri'];
+                $cleverRosterLink = $cleverData['links'][$rosterLinkNumber]['uri'];
                 $this->getPreferences();
                 $this->user = $this->upsertUser($this->type, $cleverData['data'], 'Clever User Sync Command', true);
                 $this->user->deleted_at = null;
@@ -153,7 +154,7 @@ class UserSync extends Command
                     $this->updateRosterData($cleverRosterLink);
                 }
             } else {
-                dd($cleverPull,'here', $this->cleverId);
+                dd($cleverPull, 'here', $this->cleverId);
                 $this->warn('Discconect Clever Id: '.$this->cleverId.' from user '.$this->user->id.'.');
 
             }
@@ -162,7 +163,7 @@ class UserSync extends Command
 
             if ($this->type == 'student') {
                 $this->warn('Removing rosters from student...');
-                foreach($this->user->rosters as $roster) {
+                foreach ($this->user->rosters as $roster) {
                     if (isset($roster->metadata->data['clever_id'])) {
                         $section = $this->clever->section($roster->metadata->data['clever_id']);
                         if (isset($section->data['error'])) {
@@ -171,8 +172,7 @@ class UserSync extends Command
                         }
                     }
                 }
-            }
-            elseif($this->type == 'teacher') {
+            } elseif ($this->type == 'teacher') {
                 // ToDo: Clever: Remove rosters from teacher that they lost access to
                 $this->warn('Removing rosters from teacher... ToDo');
             }
@@ -207,16 +207,16 @@ class UserSync extends Command
     }
 
 
-
     public function updateSiteLinks($cleverLink)
     {
 
-        $this->output->note('Syncing ' . $this->type . 's site information...');
+        $this->output->note('Syncing '.$this->type.'s site information...');
 
         $cleverSiteData = $this->clever->getUrl(substr($cleverLink, 6));
         $metadataSite = Metadata::ofCleverId($cleverSiteData['data']['id'])->first();
         $this->user->sites()->detach();
         $this->user->sites()->attach($metadataSite->metable_id);
+        $this->user->setMetadata(['site_id' => $metadataSite->metable_id]);
     }
 
     /**
@@ -247,17 +247,46 @@ class UserSync extends Command
     {
         $this->warn('Processing teachers rosters... roster access or a different issue');
 
+        $rosterAccess = [];
+
         foreach ($cleverSections['data'] as $section) {
-            $cleverTeacher = $this->clever->teacher($section['data']['teacher']);
-            if(Metadata::ofType('LGL\Core\Rosters\Models\Roster')->ofCleverId($section['data']['id'])->count() > 0) {
+
+            $rosterAccess = array_merge($rosterAccess, $section['data']['teachers']);
+
+            if (Metadata::ofType('LGL\Core\Rosters\Models\Roster')->ofCleverId($section['data']['id'])->count() > 0) {
                 // We found a roster to attach to the user.
                 $this->warn('Found roster to attach to user...');
-                $rosterMetadataByCleverIds[] = Metadata::ofType('LGL\Core\Rosters\Models\Roster')->ofCleverId($section['data']['id'])->first()->metable_id;
-            }
-            else {
+                $site = $this->getSite($section['data']['school']);
+                $teacherGet = $this->getUser(null, $section['data']['teacher'], $this->client->id)->first();
+                $rosterId = Metadata::ofType('LGL\Core\Rosters\Models\Roster')->ofCleverId($section['data']['id'])->first()->metable_id ?? null;
+
+                if (! is_null($teacherGet) && ! is_null($rosterId) && ! is_null($site)) {
+
+                    $this->info('Updated teacher for roster: '.$rosterId.' ...');
+
+                    Roster::where('id', $rosterId)->update([
+                        'site_id' => $site->id,
+                        'user_id' => $teacherGet->id,
+                        'title' => $section['data']['name'].' (Clever)'
+                    ]);
+
+                }
+
+            } else {
+                $cleverTeacher = $this->clever->teacher($section['data']['teacher']);
                 $this->warn('No roster found to attach to the teacher. Lets Create One...');
                 $this->createRoster($section['data'], $cleverTeacher->data['data']);
             }
+        }
+        $rosterAccess = array_filter(array_unique($rosterAccess), fn($val)=> $val != $this->cleverId);
+
+        if (!empty($rosterAccess)) {
+            $this->user->rosterAccess()->sync($rosterAccess);
+        } else {
+            $this->user->rosterAccess()->detach();
+            $data = $this->user->metadata->data;
+            unset($data['roster_id']);
+            $this->user->setMetadata($data, true);
         }
     }
 
@@ -271,12 +300,11 @@ class UserSync extends Command
         // ToDo: Clever: There has to be a better way to do this (@Ryan)
         foreach ($cleverSections['data'] as $section) {
 
-            if(Metadata::ofType('LGL\Core\Rosters\Models\Roster')->ofCleverId($section['data']['id'])->count() > 0) {
+            if (Metadata::ofType('LGL\Core\Rosters\Models\Roster')->ofCleverId($section['data']['id'])->count() > 0) {
                 // We found a roster to attach to the user.
                 $this->warn('Found roster to attach to user...');
                 $rosterMetadataByCleverIds[] = Metadata::ofType('LGL\Core\Rosters\Models\Roster')->ofCleverId($section['data']['id'])->first()->metable_id;
-            }
-            else {
+            } else {
                 $this->warn('No roster found to attach to user. Lets Create One...');
                 // ToDo: Clever Get Teacher Data From Clever in-case we need it.
                 $teacher = $this->clever->teacher($section['data']['teacher']);

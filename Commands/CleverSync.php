@@ -101,23 +101,12 @@ class CleverSync extends Command
 
         $this->setPreferneces();
 
-        $this->syncDistrictInformation();
-        $this->info('  ! District Information Synced');
-
-        $this->syncAdminsInformation();
-        $this->info('  ! Admins Information Synced');
-
-        $this->syncSitesInformation();
-        $this->info('  ! Sites Information Synced');
-
-        $this->syncPrincipalsInformation();
-
-
-        $this->syncTeachersInformation();
-        $this->info('  ! Teachers Information Synced');
-
-        $this->syncStudentsInformation();
-        $this->info('  ! Students Information Synced');
+        $this->syncInformation('District');
+        $this->syncInformation('Admins');
+        $this->syncInformation('Sites');
+        $this->syncInformation('Principals');
+        $this->syncInformation('Teachers');
+        $this->syncInformation('Students');
 
         if ($this->option('skipSections') !== true) {
             $this->syncSectionsInformation();
@@ -130,6 +119,13 @@ class CleverSync extends Command
         $this->info('Sync Complete');
         return true;
     }
+
+  private function syncInformation(string $infoType): void {
+    $this->info("Syncing $infoType...");
+    $syncFunction = "sync" . $infoType . "Information";
+    $this->$syncFunction();
+    $this->info("$infoType Information Synced");
+  }
 
     /********     | New Methods |         *************/
 
