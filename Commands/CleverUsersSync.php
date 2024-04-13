@@ -46,7 +46,7 @@ class CleverUsersSync extends Command
         //
 
 
-        switch($this->argument('type')) {
+        switch ($this->argument('type')) {
             case 'student':
                 $this->info('Queuing Clever Sync for Client: ' . $this->argument('clientId') . ' and type: ' . $this->argument('type') . '...');
                 $this->usersSync('student');
@@ -77,38 +77,39 @@ class CleverUsersSync extends Command
         }
         print "\n";
         $this->comment('Done!');
-        
 
 
-        
     }
 
-    private function usersSync($type) {
+    private function usersSync($type)
+    {
 
-		$users = EloquentUser::ofClientId($this->argument('clientId'))->OfRole($type)->where('last_login', '>', Carbon::now()->subDays(120));
-		$progressBar = $this->output->createProgressBar();
+        $users = EloquentUser::withTrashed()->ofClientId($this->argument('clientId'))->OfRole($type);
+        $progressBar = $this->output->createProgressBar();
         $progressBar->start($users->count());
-		$users->orderBy('id')->with('metadata')->chunk(25, function($usersChunk) use($progressBar, $type) {
-			foreach ($usersChunk as $user) {
-                if(isset($user->metadata->data['clever_id'])) {
-                    Artisan::queue('clever:userSync', ['clientId' => $user->client_id, 'type' => $type, 'cleverId' => $user->metadata->data['clever_id']]);
+        $users->orderBy('id')->with('metadata')->chunk(25, function ($usersChunk) use ($progressBar, $type) {
+            foreach ($usersChunk as $user) {
+                if (isset($user->metadata->data['clever_id'])) {
+                    artisan('clever:userSync', ['clientId' => $user->client_id, 'type' => $type, 'cleverId' => $user->metadata->data['clever_id']]);
+//                    Artisan::queue('clever:userSync', ['clientId' => $user->client_id, 'type' => $type, 'cleverId' => $user->metadata->data['clever_id']]);
                 }
-			}
+            }
             $progressBar->advance(count($usersChunk));
-		});
-		$progressBar->finish();
+        });
+        $progressBar->finish();
     }
 
-    private function sectionsSync() {
+    private function sectionsSync()
+    {
 
         // Get all sections and queue for a roster sync
-        $sections = Roster::ofClient($this->argument('clientId'))->where('created_at', '>', Carbon::now()->subDays(120))->get();
+        $sections = Roster::ofClient($this->argument('clientId'))->where('created_at', '>', Carbon::now()->subDays(120));
         $progressBar = $this->output->createProgressBar();
         $progressBar->start($sections->count());
-    
-        $sections->chunk(25, function($sectionsChunk) use($progressBar) {
+
+        $sections->chunk(25, function ($sectionsChunk) use ($progressBar) {
             foreach ($sectionsChunk as $section) {
-                if(isset($section->metadata->data['clever_id'])) {
+                if (isset($section->metadata->data['clever_id'])) {
                     Artisan::queue('clever:sectionSync', ['clientId' => $section->client_id, 'sectionId' => $section->metadata->data['clever_id']]);
                 }
             }

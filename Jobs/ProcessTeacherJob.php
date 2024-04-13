@@ -8,8 +8,10 @@ use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Foundation\Bus\Dispatchable;
 use Illuminate\Queue\InteractsWithQueue;
 use Illuminate\Queue\SerializesModels;
+use LGL\Clever\Exceptions\ExceededCleverIdCount;
 use LGL\Clever\Traits\ProcessCleverUserTrait;
 use LGL\Core\Accounts\Models\Client;
+use LGL\Core\Models\Metadata;
 
 class ProcessTeacherJob implements ShouldQueue
 {
@@ -35,6 +37,8 @@ class ProcessTeacherJob implements ShouldQueue
     {
         $this->client = Client::find($this->client);
         $this->setPreferneces();
+
+        $this->checkCleverIdCount();
 
         $cleverUserArray['data'] = $this->cleverUser->data;
         $user = $this->processCleverUserData($cleverUserArray, 'teacher');

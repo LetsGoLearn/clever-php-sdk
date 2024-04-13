@@ -37,6 +37,8 @@ class ProcessPrincipalJob implements ShouldQueue
         $this->client = Client::find($this->client);
         $this->setPreferneces();
 
+        $this->checkCleverIdCount();
+
         $userDataArray['data'] = $this->cleverUser->data;
         $user = $this->processCleverUserData($userDataArray, 'principal');
         $metadata = $this->getPrincipalMetadata();

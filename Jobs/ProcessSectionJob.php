@@ -9,10 +9,12 @@ use Illuminate\Queue\InteractsWithQueue;
 use Illuminate\Queue\SerializesModels;
 use LGL\Auth\Users\EloquentUser;
 use LGL\Clever\Exceptions\CleverNullUser;
+use LGL\Clever\Exceptions\ExceededCleverIdCount;
 use LGL\Clever\Traits\ProcessCleverUserTrait;
 use LGL\Core\Accounts\Models\Client;
 use Carbon\Carbon;
 use LGL\Core\Models\Course as Courses;
+use LGL\Core\Models\Metadata;
 use LGL\Core\Models\Period as Periods;
 use LGL\Core\Models\Subject as Subjects;
 use LGL\Core\Rosters\Models\Roster;
@@ -56,6 +58,7 @@ class ProcessSectionJob implements ShouldQueue
     public function handle()
     {
         $this->client = Client::find($this->client);
+        $this->checkCleverIdCount();
         $this->setSite($this->cleverSection->data->school);
         $this->setPrimaryTeacher($this->cleverSection->data->teacher);
         $this->setRoster($this->cleverSection->data->id);
@@ -217,6 +220,14 @@ class ProcessSectionJob implements ShouldQueue
         $roster->setMetadata($this->buildRosterMetadata($section));
 
         return $roster;
+    }
+
+    private function checkCleverIdCount() {
+        $metadataRecords = Metadata::ofCleverId($this->cleverSection->data->id)->ofType('rosters');
+
+        if ($metadataRecords->count() > 1) {
+            throw new ExceededCleverIdCount();
+        }
     }
 
 }

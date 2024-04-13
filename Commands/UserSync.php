@@ -9,7 +9,9 @@ namespace LGL\Clever\Commands;
  * Time: 2:29 PM
  */
 
+use Illuminate\Support\Facades\DB;
 use LGL\Clever\Api;
+use LGL\Clever\Exceptions\CleverIdAccessDenied;
 use LGL\Clever\Exceptions\Exception;
 use Illuminate\Console\Command;
 use LGL\Core\Accounts\Models\Client as Clients;
@@ -46,7 +48,7 @@ class UserSync extends Command
      */
     protected $signature = 'clever:userSync
     {clientId : Client\'s LGL ID to sync}
-    {type : The clever type}
+    {type : The clever type options }
     {cleverId : User\'s clever id}
     {--debug : Set to output more messages.}
     {--notify= : The LGL id of a user to notify in the system when the command has completed.}';
@@ -80,26 +82,25 @@ class UserSync extends Command
         try {
             $this->client = $this->verify(Clients::with('metadata')->find($this->argument('clientId')));
             $this->cleverId = $this->argument('cleverId');
-            $this->type = $this->argument('type');
+            $this->type = $type = $this->argument('type');
             $this->clever = new Api($this->client->metadata->data['api_secret']);
 
-            // Do we have access to the user?
-            if ($this->type == 'teacher') {
-                $this->warn('Checking for teacher access...');
-                $cleverTeacher = $this->clever->teacher($this->cleverId);
-                if (isset($cleverTeacher->data['error'])) {
-                    $this->error('Teacher not available from clever '.$this->cleverId);
-                    die();
-                }
+            $this->warn("Checking for $this->type access...");
+            $cleverInformation = $this->clever->$type($this->cleverId);
+            // ToDo: Check if ID exists more than once
+            $this->checkLocalCleverId();
+            // ToDo: Check if ID & Resource are in the correct || Error if mismatched
+            //       Client Match Provided ClientID to the users.client_id
+            if (isset($cleverTeacher->data['error'])) {
+                // ToDo: Toss an Error, its the right thing to do
+                throw new CleverIdAccessDenied();
             }
 
-            // If the main record is missing we'll move the clever_id
             $idInUse = Metadata::ofCleverId($this->cleverId)->get();
 
             $this->warn('Checking for to many of a resource');
             foreach ($idInUse as $metadata) {
-                // ToDo: Clever: Check if user exists before moving on.
-                $this->user = EloquentUser::withTrashed()->find($metadata->metable_id);
+                $this->user = EloquentUser::withTrashed()->ofClient($this->client->id)->find($metadata->metable_id);
                 if (is_null($this->user)) {
                     $data = $metadata->data;
                     $data['clever_id_removed'] = $data['clever_id'];
@@ -331,5 +332,14 @@ class UserSync extends Command
         throw new Exception($client->code.' is not using Clever Smart Sync.');
     }
 
+    private function checkLocalCleverId() {
+        $this->warn("inside Checks");
+        $this->checkExistsMoreThanOnce();
+    }
+
+    private function checkExistsMoreThanOnce() {
+        $metadataRecords = Metadata::ofCleverId($this->cleverId);
+        dd($metadataRecords->get(), 'Should be checking this shit...');
+    }
 
 }

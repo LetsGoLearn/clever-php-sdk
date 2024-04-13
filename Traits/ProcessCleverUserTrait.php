@@ -75,13 +75,14 @@ trait ProcessCleverUserTrait {
         // First see if we have a CleverID in the system.
         if ($this->cleverIdExists($cleverUser['data']['id'], Metadata::$metableClasses['users'])) {
             $metadata = Metadata::ofCleverId($cleverUser['data']['id'])->where('metable_type', Metadata::$metableClasses['users'])->first();
-            $user = EloquentUser::where('id', $metadata->metable_id)->first();
+            $user = EloquentUser::withTrashed()->where('id', $metadata->metable_id)->first();
             if (!is_null($metadata) & is_null($user)) {
                 Log::alert('['.Carbon::now()->toDateTimeString().'][Clever][IdMetadata] '.'Clever ID exists in MetaData, but no user found. ID: ' . $cleverUser['data']['id'] . ' Name: ' . $cleverUser['data']['name']['first'] . ' ' . $cleverUser['data']['name']['last'] . ' | eMail: ' . $cleverUser['data']['email'] . '. Metadata Record Present. ');
                 throw new Exception('['.Carbon::now()->toDateTimeString().'][Clever][IdMetadata] '.'Clever ID exists in MetaData, but no user found. ID: ' . $cleverUser['data']['id'] . ' Name: ' . $cleverUser['data']['name']['first'] . ' ' . $cleverUser['data']['name']['last'] . ' | eMail: ' . $cleverUser['data']['email'] . '. Metadata Record Present. ');
             }
             $userFound = true;
         }
+
 
         // Get user by Foreign ID
 
@@ -123,6 +124,7 @@ trait ProcessCleverUserTrait {
         }
 
 
+        // We have a user otherwise we should create one.
         if (!is_null($user)) {
             $user->first_name = $cleverUser['data']['name']['first'];
             $user->last_name = $cleverUser['data']['name']['last'];
@@ -299,4 +301,11 @@ trait ProcessCleverUserTrait {
         return $this;
     }
 
+    public function checkCleverIdCount() {
+        $metadataRecords = Metadata::ofCleverId($this->cleverUser->id)->ofType('users');
+
+        if ($metadataRecords->count() > 1) {
+            throw new ExceededCleverIdCount();
+        }
+    }
 }

@@ -414,6 +414,7 @@ class CleverSync extends Command
         $district = $this->clever->district($this->districtId);
         $object = $district->getTeachers(['limit' => $this->limit]);
 
+        // This is duplicate ID Check
         if (count($object) >= 1 && $object[0]->id !== null) {
             $this->output->note('Processing ' . count($object) . ' teachers...');
             echo "\n";

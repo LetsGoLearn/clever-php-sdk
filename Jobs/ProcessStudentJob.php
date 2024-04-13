@@ -37,6 +37,9 @@ class ProcessStudentJob implements ShouldQueue
     {
         $this->client = Client::find($this->client);
         $this->setPreferneces();
+
+        $this->checkCleverIdCount();
+
         $dob = new Carbon($this->cleverUser->data['dob']);
         $data = $this->coreData($this->cleverUser, 'student', 1); // Assuming coreData is a shared method
         $data = array_merge($data, [
