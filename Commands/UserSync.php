@@ -88,7 +88,7 @@ class UserSync extends Command
             $this->warn("Checking for $this->type access...");
             $cleverInformation = $this->clever->$type($this->cleverId);
             // ToDo: Check if ID exists more than once
-            $this->checkLocalCleverId();
+            //$this->checkLocalCleverId();
             // ToDo: Check if ID & Resource are in the correct || Error if mismatched
             //       Client Match Provided ClientID to the users.client_id
             if (isset($cleverTeacher->data['error'])) {
