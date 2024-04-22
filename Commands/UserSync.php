@@ -100,7 +100,7 @@ class UserSync extends Command
 
             $this->warn('Checking for to many of a resource');
             foreach ($idInUse as $metadata) {
-                $this->user = EloquentUser::withTrashed()->ofClient($this->client->id)->find($metadata->metable_id);
+                $this->user = EloquentUser::withTrashed()->where('client_id', $this->client->id)->find($metadata->metable_id);
                 if (is_null($this->user)) {
                     $data = $metadata->data;
                     $data['clever_id_removed'] = $data['clever_id'];
