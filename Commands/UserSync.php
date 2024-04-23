@@ -114,8 +114,10 @@ class UserSync extends Command
                 $cleverInfo = $this->clever->$type($this->cleverId);
                 if (isset($cleverInfo->data['error'])) {
                     $this->warn('Clever Id: '.$this->cleverId.' is no longer in clever. Removing...');
-                    $metadata->data['clever_id'] = false;
-                    $metadata->data['clever_id_removed'] = $this->cleverId;
+                    $data = $metadata->data;
+                    $data['clever_id'] = false;
+                    $data['clever_id_removed'] = $this->cleverId;
+                    $metadata->data = $data;
                     $metadata->save();
                 }
             }
