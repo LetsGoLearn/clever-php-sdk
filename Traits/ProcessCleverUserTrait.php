@@ -4,6 +4,7 @@ namespace LGL\Clever\Traits;
 
 
 use Carbon\Carbon;
+use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Facades\Log;
 use LGL\Auth\Users\EloquentUser;
@@ -15,7 +16,8 @@ use LGL\Clever\Exceptions\Exception;
 use LGL\Core\Accounts\Models\Site;
 use LGL\Core\Models\Metadata;
 
-trait ProcessCleverUserTrait {
+trait ProcessCleverUserTrait
+{
 
 
     public function coreData($object, $type, $partnerId)
@@ -24,39 +26,39 @@ trait ProcessCleverUserTrait {
             $return = $object->data;
         } else {
             $basicData = [
-                'clever_id' => $object->id,
-                'state_id' => $object->data['state_id'] ?? null,
+                'clever_id'  => $object->id,
+                'state_id'   => $object->data['state_id'] ?? null,
                 'partner_id' => $partnerId,
             ];
 
             switch ($type) {
                 case 'student':
                     $data = [
-                        'foreign_id' => $this->getForeignId($object->data),
+                        'foreign_id'         => $this->getForeignId($object->data),
                         'hispanic_ethnicity' => (isset($object->data['hispanic_ethnicity']) ? $object->data['hispanic_ethnicity'] : null),
-                        'sis_id' => $object->data['sis_id'] ?? null,
-                        'iep_status' => $object->data['iep_status'] ?? null,
-                        'ell_status' => $object->data['ell_status'] ?? null,
-                        'email' => $object->data['email'] ?? null,
-                        'frl_status' => $object->data['frl_status'] ?? null,
-                        'grade' => $object->data['grade'] ?? null,
-                        'race' => $object->data['race'] ?? null,
-                        'student_number' => $object->data['student_number'] ?? null,
-                        'gender' => $object->data['gender'],
+                        'sis_id'             => $object->data['sis_id'] ?? null,
+                        'iep_status'         => $object->data['iep_status'] ?? null,
+                        'ell_status'         => $object->data['ell_status'] ?? null,
+                        'email'              => $object->data['email'] ?? null,
+                        'frl_status'         => $object->data['frl_status'] ?? null,
+                        'grade'              => $object->data['grade'] ?? null,
+                        'race'               => $object->data['race'] ?? null,
+                        'student_number'     => $object->data['student_number'] ?? null,
+                        'gender'             => $object->data['gender'],
                     ];
                     break;
                 case 'teacher':
                     $data = [
-                        'sis_id' => $object->data['sis_id'] ?? null,
-                        'title' => $object->data['title'] ?? null,
+                        'sis_id'         => $object->data['sis_id'] ?? null,
+                        'title'          => $object->data['title'] ?? null,
                         'teacher_number' => $object->data['teacher_number'] ?? null,
                     ];
                     break;
                 case 'site':
                     $data = [
-                        'phone' => $object->data['phone'] ?? null,
+                        'phone'         => $object->data['phone'] ?? null,
                         'school_number' => $object->data['school_number'] ?? null,
-                        'nces_id' => $object->data['nces_id'] ?? null,
+                        'nces_id'       => $object->data['nces_id'] ?? null,
                     ];
                     break;
                 default:
@@ -74,11 +76,12 @@ trait ProcessCleverUserTrait {
         $user = null;
         // First see if we have a CleverID in the system.
         if ($this->cleverIdExists($cleverUser['data']['id'], Metadata::$metableClasses['users'])) {
-            $metadata = Metadata::ofCleverId($cleverUser['data']['id'])->where('metable_type', Metadata::$metableClasses['users'])->first();
+            $metadata = Metadata::ofCleverId($cleverUser['data']['id'])->where('metable_type',
+                Metadata::$metableClasses['users'])->first();
             $user = EloquentUser::withTrashed()->where('id', $metadata->metable_id)->first();
-            if (!is_null($metadata) & is_null($user)) {
-                Log::alert('['.Carbon::now()->toDateTimeString().'][Clever][IdMetadata] '.'Clever ID exists in MetaData, but no user found. ID: ' . $cleverUser['data']['id'] . ' Name: ' . $cleverUser['data']['name']['first'] . ' ' . $cleverUser['data']['name']['last'] . ' | eMail: ' . $cleverUser['data']['email'] . '. Metadata Record Present. ');
-                throw new Exception('['.Carbon::now()->toDateTimeString().'][Clever][IdMetadata] '.'Clever ID exists in MetaData, but no user found. ID: ' . $cleverUser['data']['id'] . ' Name: ' . $cleverUser['data']['name']['first'] . ' ' . $cleverUser['data']['name']['last'] . ' | eMail: ' . $cleverUser['data']['email'] . '. Metadata Record Present. ');
+            if (! is_null($metadata) & is_null($user)) {
+                Log::alert('['.Carbon::now()->toDateTimeString().'][Clever][IdMetadata] '.'Clever ID exists in MetaData, but no user found. ID: '.$cleverUser['data']['id'].' Name: '.$cleverUser['data']['name']['first'].' '.$cleverUser['data']['name']['last'].' | eMail: '.$cleverUser['data']['email'].'. Metadata Record Present. ');
+                throw new Exception('['.Carbon::now()->toDateTimeString().'][Clever][IdMetadata] '.'Clever ID exists in MetaData, but no user found. ID: '.$cleverUser['data']['id'].' Name: '.$cleverUser['data']['name']['first'].' '.$cleverUser['data']['name']['last'].' | eMail: '.$cleverUser['data']['email'].'. Metadata Record Present. ');
             }
             $userFound = true;
         }
@@ -94,10 +97,9 @@ trait ProcessCleverUserTrait {
                 ->with('metadata')
                 ->first();
 
-            if($user) {
+            if ($user) {
                 $userFound = true;
-            }
-            else {
+            } else {
                 $dob = new Carbon($cleverUser['data']['dob']);
 
                 $user = EloquentUser::where('client_id', $this->client->id)
@@ -114,24 +116,30 @@ trait ProcessCleverUserTrait {
             }
         }
 
-
         // Get User By Email
-        if (isset($cleverUser['data']['email']) && $userFound !== true) {
-           $user = EloquentUser::where('email', $cleverUser['data']['email'])
-                    ->orWhere('username', $cleverUser['data']['email'])
-                    ->where('client_id', $this->client->id)
-                    ->with('metadata')->first();
+        if (isset($cleverUser['data']['email']) && trim($cleverUser['data']['email']) != '' && $userFound !== true) {
+            $user = EloquentUser::withTrashed()->where('client_id', $this->client->id)
+                ->where(function (Builder $query) use ($cleverUser) {
+                    $query->orWhere(function (Builder $query) use ($cleverUser) {
+                        $query->whereRaw('LOWER(username) = ?', [strtolower($cleverUser['data']['email'])]);
+                    })->orWhere(function (Builder $query) use ($cleverUser) {
+                        $query->whereRaw('LOWER(email) = ?', [$cleverUser['data']['email']])
+                            ->whereNotNull('email');
+                    });
+                })
+                ->orderByRaw('last_login DESC NULLS LAST')
+                ->with('metadata')
+                ->first();
         }
 
 
         // We have a user otherwise we should create one.
-        if (!is_null($user)) {
+        if (! is_null($user)) {
             $user->first_name = $cleverUser['data']['name']['first'];
             $user->last_name = $cleverUser['data']['name']['last'];
             $user->email = ($cleverUser['data']['email'] ?? null);
             $user->deleted_at = null;
             $user->save();
-            return $user;
         } else {
             // Must be a new user, we found no matches
             $user = new EloquentUser();
@@ -143,11 +151,9 @@ trait ProcessCleverUserTrait {
             $user->last_name = $cleverUser['data']['name']['last'];
             $user->email = ($cleverUser['data']['email'] ?? null);
             $user->save();
-            return $user;
-        }
 
-        Log::alert('Clever ID exists unsure what to do. ID: ' . $cleverUser['data']['id'] . ' Name: ' . $cleverUser['data']['name']['first'] . ' ' . $cleverUser['data']['name']['last'] . ' | eMail: ' . $cleverUser['data']['email'] . '. Usually indicates a duplicate User record. One is missing the email.');
-//        throw new CleverNullUser('Clever ID exists, but no user found/null. ID: ' . $cleverUser['data']['id'] . ' Name: ' . $cleverUser['data']['name']['first'] . ' ' . $cleverUser['data']['name']['last'] . ' | eMail: ' . $cleverUser['data']['email'] . '. Usually indicates a duplicate User record. One is missing the email.');
+        }
+        return $user;
     }
 
     private function getSchoolsToAttach($schoolCleverIds)
@@ -178,7 +184,8 @@ trait ProcessCleverUserTrait {
         return $attachToSchools;
     }
 
-    public function getTeachersToAttach() {
+    public function getTeachersToAttach()
+    {
 
     }
 
@@ -207,8 +214,8 @@ trait ProcessCleverUserTrait {
     public function cleverIdExists($cleverId, $metabletype)
     {
         if (Metadata::ofCleverId($cleverId)->where('metable_type', $metabletype)->count() > 1) {
-            Log::alert('['.Carbon::now()->toDateTimeString().'][Clever][MultipleIds] Clever ID exists more than once in the system. ID: ' . $cleverId . ' | Type: ' . $metabletype . '.');
-            throw new ExceededCleverIdCount('['.Carbon::now()->toDateTimeString().'][Clever][MultipleIds] Clever ID exists more than once in the system. ID: ' . $cleverId . ' | Type: ' . $metabletype . '.');
+            Log::alert('['.Carbon::now()->toDateTimeString().'][Clever][MultipleIds] Clever ID exists more than once in the system. ID: '.$cleverId.' | Type: '.$metabletype.'.');
+            throw new ExceededCleverIdCount('['.Carbon::now()->toDateTimeString().'][Clever][MultipleIds] Clever ID exists more than once in the system. ID: '.$cleverId.' | Type: '.$metabletype.'.');
         }
 
         return (Metadata::ofCleverId($cleverId)->where('metable_type', $metabletype)->first()) ? true : false;
@@ -230,18 +237,20 @@ trait ProcessCleverUserTrait {
             case 'email':
                 return (isset($array['data']['email'])) ? $array['data']['email'] : null;
             case 'filifi':
-                return substr($array['data']['name']['first'], 0, 1) . substr($array['data']['name']['last'], 0, 1) . $array['data']['foreign_id'];
+                return substr($array['data']['name']['first'], 0, 1).substr($array['data']['name']['last'], 0,
+                        1).$array['data']['foreign_id'];
             case 'fnlidob':
                 // Format mmdd
                 $dob = new Carbon($array['data']['dob']);
-                return strtolower($array['data']['name']['first']) . substr($array['data']['name']['last'], 0, 1) . $dob->format('md');
+                return strtolower($array['data']['name']['first']).substr($array['data']['name']['last'], 0,
+                        1).$dob->format('md');
             case 'fndob':
                 // Format mmddyy
                 $dob = new Carbon($array['data']['dob']);
 
-                return $array['data']['name']['first'] . $dob->format('mdY');
+                return $array['data']['name']['first'].$dob->format('mdY');
             case 'fnfi':
-                return $array['data']['name']['first'] . $array['data']['foreign_id'];
+                return $array['data']['name']['first'].$array['data']['foreign_id'];
         }
 
         return $this;
@@ -264,9 +273,9 @@ trait ProcessCleverUserTrait {
 
                 return $dob->format('mdY');
             case 'fnli':
-                return strtolower($array['data']['name']['first'] . substr($array['data']['name']['last'], 0, 1));
+                return strtolower($array['data']['name']['first'].substr($array['data']['name']['last'], 0, 1));
             case 'filn':
-                return strtolower(substr($array['data']['name']['first'], 0, 1) . $array['data']['name']['last']);
+                return strtolower(substr($array['data']['name']['first'], 0, 1).$array['data']['name']['last']);
             case 'ln':
                 return strtolower($array['data']['name']['last']);
             case 'randnum':
@@ -288,7 +297,7 @@ trait ProcessCleverUserTrait {
     public function checkCleverIdMatch($syncCleverId, $systemCleverId): bool
     {
         if ($syncCleverId !== $systemCleverId) {
-            throw new CleverIdMissmatch('Clever ID mismatch. Sync ID: ' . $syncCleverId . '. System ID: ' . $systemCleverId . ' .');
+            throw new CleverIdMissmatch('Clever ID mismatch. Sync ID: '.$syncCleverId.'. System ID: '.$systemCleverId.' .');
         }
         return false;
     }
@@ -296,12 +305,13 @@ trait ProcessCleverUserTrait {
     public function checkEmailMatch($syncEmail, $systemEmail): CleverSync
     {
         if ($syncEmail !== $systemEmail) {
-            throw new EmailMissmatch('Email mismatch. Sync Email: ' . $syncEmail . '. System Email: ' . $systemEmail . ' .');
+            throw new EmailMissmatch('Email mismatch. Sync Email: '.$syncEmail.'. System Email: '.$systemEmail.' .');
         }
         return $this;
     }
 
-    public function checkCleverIdCount() {
+    public function checkCleverIdCount()
+    {
         $metadataRecords = Metadata::ofCleverId($this->cleverUser->id)->ofType('users');
 
         if ($metadataRecords->count() > 1) {
