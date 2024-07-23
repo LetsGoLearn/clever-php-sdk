@@ -144,6 +144,7 @@ class CleverSectionSync extends Command
         $teacherData = $this->clever->teacher($section['data']['teacher']);
         if (isset($section['data']['id'])) {
             // Here we are going to update the roster information
+
             $this->upsertSection($section['data'], $teacherData->data['data']);
             if ($this->option('debug')) {
                 $this->info('Roster created/updated...');
